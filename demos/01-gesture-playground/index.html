@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux · Gesture Playground</title>
+<style>
+:root {
+  --bg:         #07090f;
+  --surface:    #0d1117;
+  --card:       #161b22;
+  --border:     rgba(255,255,255,0.07);
+  --muted:      #6e7681;
+  --text:       #e6edf3;
+  --accent:     #6c5ce7;
+  --cyan:       #00d2ff;
+  --orange:     #ff6b35;
+  --waiting:    #ef4444;
+  --working:    #22c55e;
+  --permission: #f97316;
+  --done:       #3b82f6;
+  --glass-bg:   rgba(13,17,23,0.75);
+  --glass-blur: blur(16px) saturate(180%);
+  --glass-border: 1px solid rgba(255,255,255,0.08);
+  --glass-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.5), 0 16px 40px rgba(0,0,0,0.3);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Main canvas fills viewport ── */
+#video-bg {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: 0.35;
+  transform: scaleX(-1);
+  z-index: 0;
+}
+#gesture-canvas {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ── Overlay UI ── */
+#ui-layer {
+  position: fixed; inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* ── Header bar ── */
+#header {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: var(--glass-border);
+  pointer-events: auto;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 800; letter-spacing: -0.03em; color: var(--text);
+}
+.brand-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%,100% { opacity: 0.7; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.3); }
+}
+.brand span { color: var(--muted); font-weight: 400; font-size: 12px; }
+#header-right {
+  display: flex; align-items: center; gap: 8px;
+}
+.hdr-btn {
+  padding: 5px 12px; border-radius: 6px;
+  border: var(--glass-border); color: var(--muted);
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  background: rgba(255,255,255,0.04);
+  cursor: pointer; transition: all 140ms ease;
+  pointer-events: auto;
+}
+.hdr-btn:hover { color: var(--text); background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); }
+.hdr-btn.active { color: var(--accent); border-color: rgba(108,92,231,0.4); background: rgba(108,92,231,0.12); }
+#cam-status {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 500; color: var(--muted);
+}
+#cam-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted); transition: background 300ms;
+}
+#cam-dot.live { background: var(--working); box-shadow: 0 0 8px var(--working); }
+#cam-dot.error { background: var(--waiting); }
+
+/* ── Gesture HUD (bottom-left) ── */
+#gesture-hud {
+  position: absolute; bottom: 24px; left: 24px;
+  display: flex; flex-direction: column; gap: 6px;
+  opacity: 0; transition: opacity 250ms ease;
+  pointer-events: none;
+}
+#gesture-hud.visible { opacity: 1; }
+
+.hand-hud {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 10px;
+  padding: 8px 14px;
+  min-width: 200px;
+}
+.hand-role {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  width: 38px; flex-shrink: 0;
+}
+.hand-role.left  { color: var(--accent); }
+.hand-role.right { color: var(--cyan); }
+.gesture-name {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  flex: 1; min-width: 0;
+}
+.confidence-bar-wrap {
+  width: 50px; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.08); flex-shrink: 0; overflow: hidden;
+}
+.confidence-bar {
+  height: 100%; border-radius: 2px;
+  background: var(--accent); transition: width 100ms ease;
+}
+.confidence-bar.high  { background: var(--working); }
+.confidence-bar.mid   { background: #eab308; }
+.confidence-bar.low   { background: var(--waiting); }
+
+/* ── Action toast (top-center) ── */
+#action-toast {
+  position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 12px; font-weight: 600; color: var(--text);
+  opacity: 0; transition: opacity 200ms ease;
+  white-space: nowrap; pointer-events: none;
+}
+#action-toast.show { opacity: 1; }
+
+/* ── Legend panel (open palm or button = show/hide) ── */
+#legend {
+  position: absolute; right: 24px; top: 70px;
+  width: 240px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 12px;
+  padding: 16px;
+  opacity: 0; transform: translateY(-8px) scale(0.97);
+  transition: opacity 200ms ease, transform 200ms ease;
+  pointer-events: none;
+}
+#legend.visible { opacity: 1; transform: none; pointer-events: auto; }
+.legend-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 12px;
+}
+.legend-section { margin-bottom: 12px; }
+.legend-hand-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.legend-hand-label.left  { color: var(--accent); }
+.legend-hand-label.right { color: var(--cyan); }
+.legend-row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.legend-row:last-child { border-bottom: none; }
+.legend-gesture { font-size: 12px; font-weight: 500; color: var(--text); width: 90px; flex-shrink: 0; }
+.legend-action  { font-size: 11px; color: var(--muted); }
+
+/* ── Extended zone indicator ring ── */
+#extended-zone {
+  position: fixed;
+  border: 1px dashed rgba(108,92,231,0.2);
+  border-radius: 4px;
+  pointer-events: none; z-index: 2;
+  transition: border-color 200ms ease;
+}
+#extended-zone.edge-active {
+  border-color: rgba(108,92,231,0.55);
+  box-shadow: 0 0 20px rgba(108,92,231,0.08) inset;
+}
+
+/* ── State: no camera ── */
+#no-camera {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; background: var(--bg);
+}
+#no-camera h2 { font-size: 18px; font-weight: 700; color: var(--text); }
+#no-camera p  { font-size: 13px; color: var(--muted); text-align: center; max-width: 320px; line-height: 1.6; }
+#start-btn {
+  margin-top: 8px;
+  padding: 10px 28px; border-radius: 8px;
+  border: var(--glass-border);
+  background: rgba(108,92,231,0.2);
+  color: var(--accent);
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all 150ms ease;
+}
+#start-btn:hover { background: rgba(108,92,231,0.35); }
+
+/* ── Two-hand mode indicator ── */
+#twohand-indicator {
+  position: absolute; bottom: 24px; right: 24px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  opacity: 0; transition: opacity 250ms ease;
+  pointer-events: none;
+  display: flex; align-items: center; gap: 8px;
+}
+#twohand-indicator.visible { opacity: 1; }
+.twohand-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+</style>
+</head>
+<body>
+
+<div id="no-camera">
+  <div class="brand"><div class="brand-dot"></div>gmux</div>
+  <h2>Gesture Playground</h2>
+  <p>Live hand tracking with both hands. Right hand navigates, left hand commands. Open your palm to show the gesture reference.</p>
+  <button id="start-btn" onclick="startCamera()">Enable Camera</button>
+</div>
+
+<video id="video-bg" autoplay playsinline muted></video>
+<canvas id="gesture-canvas"></canvas>
+
+<div id="extended-zone"></div>
+
+<div id="ui-layer">
+  <div id="header">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      gmux
+      <span>gesture playground</span>
+    </div>
+    <div id="header-right">
+      <div id="cam-status">
+        <div id="cam-dot"></div>
+        <span id="cam-label">no camera</span>
+      </div>
+      <button class="hdr-btn active" id="btn-skeleton" onclick="toggleLayer('skeleton')">Skeleton</button>
+      <button class="hdr-btn active" id="btn-labels" onclick="toggleLayer('labels')">Labels</button>
+      <button class="hdr-btn active" id="btn-trails" onclick="toggleLayer('trails')">Trails</button>
+      <button class="hdr-btn" id="btn-legend" onclick="toggleLegendBtn()">Reference</button>
+    </div>
+  </div>
+
+  <div id="action-toast" aria-live="polite"></div>
+
+  <div id="gesture-hud">
+    <div class="hand-hud" id="hud-right">
+      <span class="hand-role right">Right</span>
+      <span class="gesture-name" id="right-name">—</span>
+      <div class="confidence-bar-wrap">
+        <div class="confidence-bar" id="right-conf" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="hand-hud" id="hud-left">
+      <span class="hand-role left">Left</span>
+      <span class="gesture-name" id="left-name">—</span>
+      <div class="confidence-bar-wrap">
+        <div class="confidence-bar" id="left-conf" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="legend">
+    <div class="legend-title">Gesture Reference</div>
+    <div class="legend-section">
+      <div class="legend-hand-label right">Right — Navigate</div>
+      <div class="legend-row"><span class="legend-gesture">Swipe →</span><span class="legend-action">Next window</span></div>
+      <div class="legend-row"><span class="legend-gesture">Swipe ←</span><span class="legend-action">Previous window</span></div>
+      <div class="legend-row"><span class="legend-gesture">Swipe ↑</span><span class="legend-action">Scroll up</span></div>
+      <div class="legend-row"><span class="legend-gesture">Swipe ↓</span><span class="legend-action">Scroll down</span></div>
+      <div class="legend-row"><span class="legend-gesture">Pinch</span><span class="legend-action">Select / zoom</span></div>
+    </div>
+    <div class="legend-section">
+      <div class="legend-hand-label left">Left — Command</div>
+      <div class="legend-row"><span class="legend-gesture">Point ☝</span><span class="legend-action">Toggle voice</span></div>
+      <div class="legend-row"><span class="legend-gesture">Three ✌+</span><span class="legend-action">Jump to waiting</span></div>
+      <div class="legend-row"><span class="legend-gesture">Thumbs ↑</span><span class="legend-action">Approve</span></div>
+      <div class="legend-row"><span class="legend-gesture">Thumbs ↓</span><span class="legend-action">Reject</span></div>
+      <div class="legend-row"><span class="legend-gesture">Open Palm</span><span class="legend-action">Show / hide this</span></div>
+    </div>
+  </div>
+
+  <div id="twohand-indicator">
+    <div class="twohand-dot"></div>
+    <span>Two-hand mode</span>
+  </div>
+</div>
+
+<!-- MediaPipe CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm/vision_bundle.js" crossorigin="anonymous"></script>
+<script type="module">
+import { GestureEngine }   from '../../shared/gesture-engine.js';
+import { GestureRenderer } from '../../shared/gesture-renderer.js';
+
+// ── State ──────────────────────────────────────────────────────────────
+let engine, renderer, vision, handLandmarker;
+let stream = null;
+let animId = null;
+let lastVideoTime = -1;
+const EXTEND = 0.12; // extend canvas 12% on all sides
+
+const layers = { skeleton: true, labels: true, trails: true };
+
+const video   = document.getElementById('video-bg');
+const canvas  = document.getElementById('gesture-canvas');
+const ctx     = canvas.getContext('2d');
+
+const hudEl     = document.getElementById('gesture-hud');
+const rightName = document.getElementById('right-name');
+const leftName  = document.getElementById('left-name');
+const rightConf = document.getElementById('right-conf');
+const leftConf  = document.getElementById('left-conf');
+const toastEl   = document.getElementById('action-toast');
+const legendEl  = document.getElementById('legend');
+const twohEl    = document.getElementById('twohand-indicator');
+const extZone   = document.getElementById('extended-zone');
+const camDot    = document.getElementById('cam-dot');
+const camLabel  = document.getElementById('cam-label');
+
+// ── Extended zone layout ──────────────────────────────────────────────
+function layoutExtendedZone() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const px = Math.round(vw * EXTEND), py = Math.round(vh * EXTEND);
+  extZone.style.left   = -px + 'px';
+  extZone.style.top    = -py + 'px';
+  extZone.style.width  = (vw + px*2) + 'px';
+  extZone.style.height = (vh + py*2) + 'px';
+}
+layoutExtendedZone();
+window.addEventListener('resize', () => { layoutExtendedZone(); resizeCanvas(); });
+
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+
+// ── Toast ──────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg, color) {
+  toastEl.textContent = msg;
+  toastEl.style.color = color || 'var(--text)';
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600);
+}
+
+// ── Layer toggles ──────────────────────────────────────────────────────
+window.toggleLayer = function(name) {
+  layers[name] = !layers[name];
+  document.getElementById('btn-' + name).classList.toggle('active', layers[name]);
+  if (renderer) {
+    if (name === 'skeleton') renderer.config.showSkeleton = layers[name];
+    if (name === 'labels')   renderer.config.showLabels   = layers[name];
+    if (name === 'trails')   renderer.config.showTrails   = layers[name];
+  }
+};
+
+// ── Camera start ──────────────────────────────────────────────────────
+window.startCamera = async function() {
+  document.getElementById('no-camera').style.display = 'none';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+    });
+    video.srcObject = stream;
+    await video.play();
+    camDot.className = 'live';
+    camLabel.textContent = 'live';
+    await initMediaPipe();
+  } catch(e) {
+    camDot.className = 'error';
+    camLabel.textContent = 'error';
+    console.error('Camera error:', e);
+    document.getElementById('no-camera').style.display = 'flex';
+  }
+};
+
+// ── MediaPipe init ──────────────────────────────────────────────────────
+async function initMediaPipe() {
+  const { HandLandmarker, FilesetResolver } = window.mediapipeTasksVision || await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3');
+  const filesetResolver = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+  );
+  handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
+    baseOptions: {
+      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      delegate: 'GPU'
+    },
+    runningMode: 'VIDEO',
+    numHands: 2,
+    minHandDetectionConfidence: 0.5,
+    minHandPresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+
+  engine = new GestureEngine({
+    gestureConfirmFrames: 3,
+    swipeVelocityThreshold: 0.022,
+    smoothingFactor: 0.7,
+    pinchThreshold: 0.06
+  });
+
+  renderer = new GestureRenderer(canvas, {
+    mirror: true,
+    background: 'video',
+    showSkeleton:    layers.skeleton,
+    showLandmarks:   true,
+    showLabels:      layers.labels,
+    showTrails:      layers.trails,
+    showPinchCircle: true,
+    showCursor:      true,
+    showMesh:        false,
+    showTwoHandShape: true,
+    handColors: {
+      Left:  { primary: '#a78bfa', secondary: '#6c5ce7', glow: 'rgba(167,139,250,0.4)', mesh: 'rgba(167,139,250,0.06)' },
+      Right: { primary: '#00d2ff', secondary: '#0088aa', glow: 'rgba(0,210,255,0.4)',   mesh: 'rgba(0,210,255,0.06)' }
+    }
+  });
+
+  bindGestureEvents();
+  requestAnimationFrame(renderLoop);
+}
+
+// ── Gesture event bindings ─────────────────────────────────────────────
+function bindGestureEvents() {
+  // Update HUD per frame
+  engine.on('frame', ({ hand, gesture, metrics }) => {
+    const nameEl = hand === 'Right' ? rightName : leftName;
+    const confEl = hand === 'Right' ? rightConf  : leftConf;
+    const name   = gesture?.name || '—';
+    const conf   = (gesture?.confidence || 0) * 100;
+    nameEl.textContent = name;
+    confEl.style.width = conf + '%';
+    confEl.className = 'confidence-bar ' + (conf > 80 ? 'high' : conf > 55 ? 'mid' : 'low');
+    hudEl.classList.add('visible');
+  });
+
+  // Swipe actions
+  engine.on('gestureStart', ({ hand, gesture }) => {
+    const g = gesture?.name;
+    if (hand === 'Right') {
+      if (g === 'SWIPE_RIGHT') showToast('→  next window',    'var(--cyan)');
+      if (g === 'SWIPE_LEFT')  showToast('←  prev window',    'var(--cyan)');
+      if (g === 'SWIPE_UP')    showToast('↑  scroll up',      'var(--cyan)');
+      if (g === 'SWIPE_DOWN')  showToast('↓  scroll down',    'var(--cyan)');
+    }
+    if (hand === 'Left') {
+      if (g === 'POINT')       showToast('🎙  voice toggle',  'var(--accent)');
+      if (g === 'THREE')       showToast('⚡  jump to waiting', 'var(--waiting)');
+      if (g === 'THUMBS_UP')   showToast('✓  approve',        'var(--working)');
+      if (g === 'THUMBS_DOWN') showToast('✗  reject',         'var(--waiting)');
+      if (g === 'OPEN_PALM')   toggleLegend();
+    }
+  });
+
+  // Two-hand mode
+  engine.on('twoHand', (data) => {
+    twohEl.classList.toggle('visible', data !== null);
+  });
+}
+
+// ── Legend toggle ─────────────────────────────────────────────────────
+let legendVisible = false;
+function toggleLegend() {
+  legendVisible = !legendVisible;
+  legendEl.classList.toggle('visible', legendVisible);
+  document.getElementById('btn-legend').classList.toggle('active', legendVisible);
+}
+// Exposed for header button (non-module context)
+window.toggleLegendBtn = toggleLegend;
+
+// ── Edge proximity detection ──────────────────────────────────────────
+let edgeTimer = null;
+function checkEdgeProximity(handsData) {
+  if (!handsData?.multiHandLandmarks?.length) return;
+  let edgeActive = false;
+  for (const landmarks of handsData.multiHandLandmarks) {
+    const wrist = landmarks[0];
+    const edgeDist = Math.min(wrist.x, 1 - wrist.x, wrist.y, 1 - wrist.y);
+    if (edgeDist < 0.10) { edgeActive = true; break; }
+  }
+  extZone.classList.toggle('edge-active', edgeActive);
+}
+
+// ── Render loop ───────────────────────────────────────────────────────
+function renderLoop() {
+  animId = requestAnimationFrame(renderLoop);
+  if (!handLandmarker || video.paused || video.ended) return;
+
+  const now = performance.now();
+  if (video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+
+  // Run detection
+  const results = handLandmarker.detectForVideo(video, now);
+
+  // Adapt results format for engine
+  const handsData = {
+    multiHandLandmarks: results.landmarks || [],
+    multiHandedness: results.handedness?.map(h => ({ label: h[0]?.categoryName || 'Right' })) || []
+  };
+
+  engine.update(handsData);
+  checkEdgeProximity(handsData);
+
+  // Render: clear then draw skeleton over video background
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Remap landmarks to extended canvas space
+  const remapped = remapToExtended(handsData);
+  renderer.draw(remapped, engine);
+}
+
+// ── Extended canvas remap ─────────────────────────────────────────────
+// Expand [0,1] → [-EXTEND, 1+EXTEND] so hands near edges don't clip
+function remapToExtended(handsData) {
+  if (!handsData?.multiHandLandmarks?.length) return handsData;
+  const E = EXTEND;
+  const remapped = { ...handsData, multiHandLandmarks: [] };
+  for (const landmarks of handsData.multiHandLandmarks) {
+    remapped.multiHandLandmarks.push(
+      landmarks.map(lm => ({
+        ...lm,
+        x: (lm.x + E) / (1 + E * 2),
+        y: (lm.y + E) / (1 + E * 2)
+      }))
+    );
+  }
+  return remapped;
+}
+
+// ── HUD hide when no hands ────────────────────────────────────────────
+let hideHudTimer = null;
+setInterval(() => {
+  const hasHands = engine && (
+    engine.hands?.Left?.landmarks || engine.hands?.Right?.landmarks
+  );
+  if (!hasHands) {
+    clearTimeout(hideHudTimer);
+    hideHudTimer = setTimeout(() => {
+      hudEl.classList.remove('visible');
+      rightName.textContent = '—';
+      leftName.textContent  = '—';
+      rightConf.style.width = '0%';
+      leftConf.style.width  = '0%';
+    }, 800);
+  }
+}, 500);
+</script>
+</body>
+</html>

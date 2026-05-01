@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<meta name="theme-color" content="#07090f"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<title>gmux remote</title>
+<style>
+:root {
+  --bg:         #07090f;
+  --surface:    #0d1117;
+  --card:       #0f1419;
+  --card-hi:    #141b24;
+  --border:     rgba(255,255,255,0.07);
+  --border-hi:  rgba(255,255,255,0.12);
+  --muted:      #6e7681;
+  --text:       #e6edf3;
+  --accent:     #6c5ce7;
+  --cyan:       #00d2ff;
+  --waiting:    #ef4444;
+  --working:    #22c55e;
+  --permission: #f97316;
+  --done:       #3b82f6;
+  --error:      #ef4444;
+  --idle:       #4b5563;
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  width: 100%; height: 100%; min-height: 100dvh;
+  background: var(--bg); color: var(--text);
+  font-family: 'SF Pro Text', 'Roboto', system-ui, sans-serif;
+  font-size: 14px; overflow: hidden; user-select: none;
+  touch-action: manipulation;
+}
+
+/* ── App shell ── */
+#app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100dvh;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+/* ── Header ── */
+#header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(13,17,23,0.95);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+}
+.brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; letter-spacing: -0.03em; }
+.brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse-glow 2.5s ease-in-out infinite; }
+@keyframes pulse-glow { 0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.3)} }
+.header-sub { font-size: 11px; font-weight: 500; color: var(--muted); }
+#conn-status { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+#conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+#conn-dot.connected { background: var(--working); box-shadow: 0 0 8px var(--working); animation: pulse-glow 2s ease-in-out infinite; }
+#conn-dot.error { background: var(--waiting); }
+.settings-btn { width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:none; color:var(--muted); font-size:16px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+
+/* ── Nav tabs ── */
+#nav-tabs {
+  display: flex; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.nav-tab {
+  flex: 1; padding: 10px 4px; text-align: center;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted); border: none; background: none; font-family: inherit;
+  cursor: pointer; transition: all 150ms ease;
+  border-bottom: 2px solid transparent;
+}
+.nav-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.nav-tab-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+
+/* ── Main scroll area ── */
+#main { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* ── Views ── */
+.view { display: none; }
+.view.active { display: block; }
+
+/* ────────────────────────────────────────────────────
+   VIEW: AGENTS
+──────────────────────────────────────────────────── */
+#agents-view { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding: 4px 0 8px; }
+
+.agent-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px;
+  cursor: pointer; transition: all 140ms ease;
+  position: relative; overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  active-scale: 0.98;
+}
+.agent-card:active { transform: scale(0.98); }
+.agent-card[data-state="waiting"]    { border-color:rgba(239,68,68,.25); box-shadow:0 0 0 1px rgba(239,68,68,.1); }
+.agent-card[data-state="working"]    { border-color:rgba(34,197,94,.2);  box-shadow:0 0 0 1px rgba(34,197,94,.08); }
+.agent-card[data-state="permission"] { border-color:rgba(249,115,22,.35); box-shadow:0 0 0 1px rgba(249,115,22,.15); animation:perm-pulse 1.8s ease-in-out infinite; }
+@keyframes perm-pulse { 0%,100%{box-shadow:0 0 0 1px rgba(249,115,22,.15)}50%{box-shadow:0 0 0 1px rgba(249,115,22,.35),0 0 20px rgba(249,115,22,.1)} }
+.agent-card[data-state="done"]  { border-color:rgba(59,130,246,.18); }
+.agent-card[data-state="error"] { border-color:rgba(239,68,68,.4); box-shadow:0 0 0 1px rgba(239,68,68,.2); }
+.agent-card.selected { border-color:rgba(108,92,231,.5)!important; box-shadow:0 0 0 1px rgba(108,92,231,.25)!important; }
+
+.ac-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.ac-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.ac-name { flex:1; font-size:16px; font-weight:700; letter-spacing:-0.02em; }
+.ac-badge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:5px; }
+.ac-perm-row { display:flex; gap:8px; margin-bottom:10px; }
+.ac-btn {
+  flex:1; padding:10px; border-radius:9px; font-family:inherit;
+  font-size:13px; font-weight:700; cursor:pointer; border:none;
+  transition:all 120ms ease;
+}
+.ac-btn.approve { background:rgba(34,197,94,.15); color:var(--working); border:1px solid rgba(34,197,94,.3); }
+.ac-btn.reject  { background:rgba(239,68,68,.12); color:var(--waiting); border:1px solid rgba(239,68,68,.25); }
+.ac-btn.approve:active { background:rgba(34,197,94,.3); }
+.ac-btn.reject:active  { background:rgba(239,68,68,.25); }
+
+.ac-progress { margin-bottom:10px; }
+.ac-progress-meta { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:5px; }
+.ac-track { height:4px; background:rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
+.ac-fill { height:100%; border-radius:2px; background:var(--accent); }
+.ac-fill.working { background:var(--working); }
+.ac-metrics { display:flex; gap:20px; margin-bottom:8px; }
+.ac-metric-label { font-size:10px; font-weight:700; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
+.ac-metric-value { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+.ac-metric-value.hot { color:var(--waiting); }
+.ac-activity { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+.ac-act-dot { width:6px; height:6px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+.ac-act-dot.working { background:var(--working); animation:act-blink 1s ease-in-out infinite; }
+@keyframes act-blink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes working-dot{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}50%{box-shadow:0 0 0 4px rgba(34,197,94,0)}}
+
+/* ────────────────────────────────────────────────────
+   VIEW: VOICE
+──────────────────────────────────────────────────── */
+#voice-view { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.voice-target-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.vt-dot { width:10px; height:10px; border-radius:50%; background:var(--muted); }
+.vt-dot.listening { background:var(--waiting); animation:act-blink .8s ease-in-out infinite; }
+.vt-info { flex:1; }
+.vt-label { font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
+.vt-name { font-size:18px; font-weight:800; letter-spacing:-0.02em; color:var(--text); }
+
+#waveform-canvas {
+  width:100%; height:60px; border-radius:10px;
+  background:rgba(255,255,255,.025); border:1px solid var(--border); display:block;
+}
+
+/* PTT button */
+#ptt-btn {
+  width:100%; padding:20px; border-radius:14px;
+  border:2px solid rgba(239,68,68,.3); background:rgba(239,68,68,.1);
+  color:var(--waiting); font-family:inherit; font-size:15px; font-weight:800;
+  letter-spacing:-0.01em; cursor:pointer; transition:all 140ms ease;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  user-select:none; -webkit-user-select:none;
+}
+#ptt-btn:active, #ptt-btn.active {
+  background:rgba(239,68,68,.25); border-color:rgba(239,68,68,.6);
+  transform:scale(0.97);
+  box-shadow:0 0 30px rgba(239,68,68,.2);
+}
+#ptt-btn.active { animation:ptt-pulse 0.6s ease-in-out infinite; }
+@keyframes ptt-pulse { 0%,100%{box-shadow:0 0 20px rgba(239,68,68,.15)}50%{box-shadow:0 0 40px rgba(239,68,68,.3)} }
+.ptt-icon { font-size:24px; }
+
+/* Transcript */
+#voice-transcript {
+  background:var(--card); border:1px solid var(--border); border-radius:12px;
+  padding:12px; min-height:120px; max-height:240px; overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  display:flex; flex-direction:column; gap:8px;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+}
+.tr-msg { display:flex; gap:8px; align-items:flex-start; }
+.tr-icon { font-size:14px; flex-shrink:0; margin-top:1px; }
+.tr-text { font-size:13px; line-height:1.5; }
+.tr-text.user { color:var(--cyan); }
+.tr-text.cmd { color:var(--muted); font-size:11px; font-family:monospace; }
+.tr-text.streaming::after { content:'▌'; animation:cursor-blink .7s ease-in-out infinite; color:var(--accent); }
+@keyframes cursor-blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Quick command chips */
+#quick-cmds { display:flex; flex-wrap:wrap; gap:8px; }
+.cmd-chip {
+  padding:8px 14px; border-radius:8px;
+  border:1px solid var(--border); background:var(--card);
+  color:var(--muted); font-family:inherit; font-size:12px; font-weight:600;
+  cursor:pointer; transition:all 120ms ease;
+}
+.cmd-chip:active { border-color:rgba(108,92,231,.4); background:rgba(108,92,231,.1); color:var(--accent); transform:scale(0.96); }
+
+/* ────────────────────────────────────────────────────
+   VIEW: CONTROLS
+──────────────────────────────────────────────────── */
+#controls-view { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.ctrl-section-label { font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+
+/* Big gesture action buttons */
+.gesture-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.gesture-btn {
+  background: var(--card); border: 1px solid var(--border); border-radius:12px;
+  padding: 16px 12px; cursor:pointer; font-family:inherit;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  transition:all 140ms ease;
+}
+.gesture-btn:active { transform:scale(0.95); border-color:var(--border-hi); background:var(--card-hi); }
+.gesture-btn .g-icon { font-size:28px; }
+.gesture-btn .g-label { font-size:11px; font-weight:700; letter-spacing:.03em; color:var(--text); }
+.gesture-btn .g-desc  { font-size:10px; color:var(--muted); text-align:center; }
+.gesture-btn.nav { border-color:rgba(0,210,255,.15); }
+.gesture-btn.nav:active { border-color:rgba(0,210,255,.4); background:rgba(0,210,255,.06); }
+.gesture-btn.cmd { border-color:rgba(108,92,231,.15); }
+.gesture-btn.cmd:active { border-color:rgba(108,92,231,.4); background:rgba(108,92,231,.08); }
+.gesture-btn.approve { border-color:rgba(34,197,94,.15); }
+.gesture-btn.approve:active { border-color:rgba(34,197,94,.4); background:rgba(34,197,94,.08); }
+.gesture-btn.danger { border-color:rgba(239,68,68,.15); }
+.gesture-btn.danger:active { border-color:rgba(239,68,68,.4); background:rgba(239,68,68,.08); }
+
+/* Volume rocker hint */
+.volume-hint {
+  background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 14px;
+  font-size:12px; color:var(--muted); display:flex; align-items:center; gap:8px; line-height:1.5;
+}
+.vol-icon { font-size:20px; flex-shrink:0; }
+
+/* ────────────────────────────────────────────────────
+   VIEW: SETTINGS
+──────────────────────────────────────────────────── */
+#settings-view { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+
+.settings-group { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.settings-row {
+  display:flex; align-items:center; gap:12px; padding:14px 16px;
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+.settings-row:last-child { border-bottom:none; }
+.sr-icon { font-size:18px; width:28px; text-align:center; flex-shrink:0; }
+.sr-info { flex:1; }
+.sr-label { font-size:14px; font-weight:600; color:var(--text); }
+.sr-desc  { font-size:11px; color:var(--muted); margin-top:1px; }
+.sr-value { font-size:13px; color:var(--muted); flex-shrink:0; }
+
+/* Toggle switch */
+.toggle {
+  width:44px; height:24px; border-radius:12px;
+  background:rgba(255,255,255,.1); border:none; cursor:pointer;
+  position:relative; transition:background 200ms ease; flex-shrink:0;
+}
+.toggle.on { background:var(--accent); }
+.toggle::after {
+  content:''; position:absolute; top:2px; left:2px;
+  width:20px; height:20px; border-radius:10px; background:#fff;
+  transition:transform 200ms ease; box-shadow:0 1px 3px rgba(0,0,0,.3);
+}
+.toggle.on::after { transform:translateX(20px); }
+
+/* Input field */
+.settings-input {
+  background:rgba(255,255,255,.05); border:1px solid var(--border);
+  border-radius:8px; padding:8px 12px; color:var(--text);
+  font-family:inherit; font-size:13px; width:100%;
+  outline:none; transition:border-color 140ms;
+}
+.settings-input:focus { border-color:rgba(108,92,231,.4); }
+.settings-input-row { padding:12px 16px; border-bottom:1px solid rgba(255,255,255,.04); }
+.settings-input-row:last-child { border-bottom:none; }
+.si-label { font-size:11px; font-weight:700; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; margin-bottom:6px; }
+
+/* Connect button */
+#connect-btn {
+  width:100%; padding:14px; border-radius:12px;
+  border:1px solid rgba(108,92,231,.35); background:rgba(108,92,231,.15);
+  color:var(--accent); font-family:inherit; font-size:15px; font-weight:800;
+  cursor:pointer; transition:all 140ms ease;
+}
+#connect-btn:active { background:rgba(108,92,231,.28); transform:scale(0.98); }
+
+/* ── Bottom action bar ── */
+#bottom-bar {
+  padding: 8px 16px calc(8px + var(--safe-bottom));
+  background: rgba(13,17,23,0.97);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  display: flex; gap: 8px;
+}
+.bottom-btn {
+  flex:1; padding:12px 8px; border-radius:10px;
+  border:1px solid var(--border); background:var(--card);
+  color:var(--muted); font-family:inherit; font-size:11px; font-weight:700;
+  cursor:pointer; transition:all 120ms ease; display:flex; flex-direction:column; align-items:center; gap:3px;
+}
+.bottom-btn:active { background:var(--card-hi); border-color:var(--border-hi); transform:scale(0.96); }
+.bottom-btn.primary { border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.1); color:var(--waiting); }
+.bottom-btn.primary:active { background:rgba(239,68,68,.22); }
+.bb-icon { font-size:20px; }
+
+/* State badge colours */
+.bg-waiting    { background:rgba(239,68,68,.12);  color:var(--waiting); }
+.bg-working    { background:rgba(34,197,94,.12);  color:var(--working); }
+.bg-permission { background:rgba(249,115,22,.14); color:var(--permission); }
+.bg-done       { background:rgba(59,130,246,.12); color:var(--done); }
+.bg-error      { background:rgba(239,68,68,.14);  color:var(--error); }
+.bg-idle       { background:rgba(75,85,99,.15);   color:var(--muted); }
+
+/* ── Feedback toast ── */
+#toast {
+  position:fixed; top:calc(var(--safe-top) + 64px); left:50%; transform:translateX(-50%);
+  background:rgba(13,17,23,.95); border:1px solid rgba(255,255,255,.1);
+  backdrop-filter:blur(12px); border-radius:10px;
+  padding:8px 18px; font-size:13px; font-weight:600;
+  opacity:0; transition:opacity 180ms ease; pointer-events:none; white-space:nowrap; z-index:100;
+}
+#toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <div>
+      <div class="brand"><div class="brand-dot"></div>gmux</div>
+      <div class="header-sub">remote control</div>
+    </div>
+    <div id="conn-status">
+      <div id="conn-dot"></div>
+      <span id="conn-label">disconnected</span>
+    </div>
+    <button class="settings-btn" onclick="switchView('settings')">⚙</button>
+  </div>
+
+  <!-- Nav tabs -->
+  <div id="nav-tabs">
+    <button class="nav-tab active" data-view="agents" onclick="switchView('agents')">
+      <span class="nav-tab-icon">🤖</span>Agents
+    </button>
+    <button class="nav-tab" data-view="voice" onclick="switchView('voice')">
+      <span class="nav-tab-icon">🎙</span>Voice
+    </button>
+    <button class="nav-tab" data-view="controls" onclick="switchView('controls')">
+      <span class="nav-tab-icon">✋</span>Controls
+    </button>
+    <button class="nav-tab" data-view="settings" onclick="switchView('settings')">
+      <span class="nav-tab-icon">⚙️</span>Settings
+    </button>
+  </div>
+
+  <!-- Main scrollable area -->
+  <div id="main">
+
+    <!-- VIEW: Agents -->
+    <div class="view active" id="agents-view">
+      <div class="section-label">All Agents</div>
+      <div id="agent-cards"></div>
+    </div>
+
+    <!-- VIEW: Voice -->
+    <div class="view" id="voice-view">
+      <div class="voice-target-card">
+        <div class="vt-dot" id="vt-dot"></div>
+        <div class="vt-info">
+          <div class="vt-label">Voice target</div>
+          <div class="vt-name" id="vt-name">none selected</div>
+        </div>
+      </div>
+
+      <canvas id="waveform-canvas" height="60"></canvas>
+
+      <button id="ptt-btn"
+        ontouchstart="startPTT()" ontouchend="stopPTT()"
+        onmousedown="startPTT()" onmouseup="stopPTT()">
+        <span class="ptt-icon">🎙</span>
+        <span id="ptt-label">Hold to talk</span>
+      </button>
+
+      <div id="voice-transcript">
+        <div class="tr-msg">
+          <span class="tr-icon">💡</span>
+          <span class="tr-text">Select an agent, then hold the mic button to send voice commands.</span>
+        </div>
+      </div>
+
+      <div class="section-label">Quick commands</div>
+      <div id="quick-cmds">
+        <button class="cmd-chip" onclick="sendQuickCmd('next red')">⚡ Next red</button>
+        <button class="cmd-chip" onclick="sendQuickCmd('approve it')">✓ Approve</button>
+        <button class="cmd-chip" onclick="sendQuickCmd('summarise')">📝 Summarise</button>
+        <button class="cmd-chip" onclick="sendQuickCmd('pause')">⏸ Pause</button>
+        <button class="cmd-chip" onclick="sendQuickCmd('show status')">📊 Status</button>
+        <button class="cmd-chip" onclick="sendQuickCmd('next window')">→ Next</button>
+      </div>
+    </div>
+
+    <!-- VIEW: Controls -->
+    <div class="view" id="controls-view">
+      <div class="ctrl-section-label">Navigation — Right hand</div>
+      <div class="gesture-grid">
+        <button class="gesture-btn nav" onclick="sendGesture('next')">
+          <span class="g-icon">→</span>
+          <span class="g-label">Next window</span>
+          <span class="g-desc">Swipe right</span>
+        </button>
+        <button class="gesture-btn nav" onclick="sendGesture('prev')">
+          <span class="g-icon">←</span>
+          <span class="g-label">Prev window</span>
+          <span class="g-desc">Swipe left</span>
+        </button>
+        <button class="gesture-btn nav" onclick="sendGesture('scroll-up')">
+          <span class="g-icon">↑</span>
+          <span class="g-label">Scroll up</span>
+          <span class="g-desc">Swipe up</span>
+        </button>
+        <button class="gesture-btn nav" onclick="sendGesture('scroll-down')">
+          <span class="g-icon">↓</span>
+          <span class="g-label">Scroll down</span>
+          <span class="g-desc">Swipe down</span>
+        </button>
+      </div>
+
+      <div class="ctrl-section-label" style="margin-top:12px">Commands — Left hand</div>
+      <div class="gesture-grid">
+        <button class="gesture-btn cmd" onclick="sendGesture('jump-red')">
+          <span class="g-icon">⚡</span>
+          <span class="g-label">Jump to waiting</span>
+          <span class="g-desc">Three fingers</span>
+        </button>
+        <button class="gesture-btn cmd" onclick="sendGesture('voice-toggle')">
+          <span class="g-icon">🎙</span>
+          <span class="g-label">Toggle voice</span>
+          <span class="g-desc">Point ☝</span>
+        </button>
+        <button class="gesture-btn approve" onclick="sendGesture('approve')">
+          <span class="g-icon">👍</span>
+          <span class="g-label">Approve</span>
+          <span class="g-desc">Thumbs up</span>
+        </button>
+        <button class="gesture-btn danger" onclick="sendGesture('reject')">
+          <span class="g-icon">👎</span>
+          <span class="g-label">Reject</span>
+          <span class="g-desc">Thumbs down</span>
+        </button>
+      </div>
+
+      <div class="volume-hint" style="margin-top:4px">
+        <span class="vol-icon">🔊</span>
+        <span><strong>Volume keys</strong> cycle windows when the app is in the foreground — next agent (vol up) / prev agent (vol down). Requires native wrapper.</span>
+      </div>
+    </div>
+
+    <!-- VIEW: Settings -->
+    <div class="view" id="settings-view">
+      <div class="settings-group">
+        <div class="settings-input-row">
+          <div class="si-label">Host IP or hostname</div>
+          <input class="settings-input" type="text" id="host-input" placeholder="192.168.1.x or gmux.local" value="192.168.1.100"/>
+        </div>
+        <div class="settings-input-row">
+          <div class="si-label">Port</div>
+          <input class="settings-input" type="number" id="port-input" placeholder="8768" value="8768"/>
+        </div>
+      </div>
+      <button id="connect-btn" onclick="toggleConnect()">Connect</button>
+
+      <div class="settings-group" style="margin-top:8px">
+        <div class="settings-row">
+          <span class="sr-icon">🔊</span>
+          <div class="sr-info">
+            <div class="sr-label">Volume key navigation</div>
+            <div class="sr-desc">Vol up/down cycles agent windows</div>
+          </div>
+          <button class="toggle on" id="toggle-vol" onclick="toggleSetting('vol')"></button>
+        </div>
+        <div class="settings-row">
+          <span class="sr-icon">📳</span>
+          <div class="sr-info">
+            <div class="sr-label">Haptic feedback</div>
+            <div class="sr-desc">Vibrate on gesture send</div>
+          </div>
+          <button class="toggle on" id="toggle-haptic" onclick="toggleSetting('haptic')"></button>
+        </div>
+        <div class="settings-row">
+          <span class="sr-icon">🌙</span>
+          <div class="sr-info">
+            <div class="sr-label">Keep screen on</div>
+            <div class="sr-desc">Prevent sleep while app active</div>
+          </div>
+          <button class="toggle on" id="toggle-screen" onclick="toggleSetting('screen')"></button>
+        </div>
+        <div class="settings-row">
+          <span class="sr-icon">🔔</span>
+          <div class="sr-info">
+            <div class="sr-label">Permission alerts</div>
+            <div class="sr-desc">Notify when agent needs approval</div>
+          </div>
+          <button class="toggle on" id="toggle-notify" onclick="toggleSetting('notify')"></button>
+        </div>
+      </div>
+
+      <div class="settings-group" style="margin-top:8px">
+        <div class="settings-row">
+          <span class="sr-icon">ℹ</span>
+          <div class="sr-info">
+            <div class="sr-label">gmux remote</div>
+            <div class="sr-desc">v0.1.0 · companion for gmux desktop</div>
+          </div>
+          <span class="sr-value"></span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- Bottom action bar -->
+  <div id="bottom-bar">
+    <button class="bottom-btn primary" id="bb-ptt"
+      ontouchstart="startPTT()" ontouchend="stopPTT()"
+      onmousedown="startPTT()" onmouseup="stopPTT()">
+      <span class="bb-icon">🎙</span>PTT
+    </button>
+    <button class="bottom-btn" onclick="sendGesture('prev')">
+      <span class="bb-icon">←</span>Prev
+    </button>
+    <button class="bottom-btn" onclick="sendGesture('next')">
+      <span class="bb-icon">→</span>Next
+    </button>
+    <button class="bottom-btn" onclick="sendGesture('jump-red')">
+      <span class="bb-icon">⚡</span>Jump
+    </button>
+  </div>
+</div><!-- /app -->
+
+<div id="toast"></div>
+
+<script>
+// ── Mock agent data ─────────────────────────────────────────────────
+const AGENTS = [
+  { id:'a1', name:'volkus',   state:'working',    todos:[6,8], ram:'1.2 GB', tokens:'847k', tool:'bash: node build.js', window:1 },
+  { id:'a2', name:'sadiya',   state:'waiting',    todos:[3,5], ram:'780 MB', tokens:'312k', tool:null,                  window:2 },
+  { id:'a3', name:'research', state:'permission', todos:[2,4], ram:'540 MB', tokens:'1.1m', tool:'edit: src/main.rs',   window:3 },
+  { id:'a4', name:'deepseek', state:'working',    todos:[7,9], ram:'2.1 GB', tokens:'2.3m', tool:'glob: src/**/*.ts',   window:4 },
+  { id:'a5', name:'deploy',   state:'done',       todos:[5,5], ram:'3.4 GB', tokens:'430k', tool:null,                  window:5 },
+  { id:'a6', name:'gemini',   state:'idle',       todos:[0,0], ram:'220 MB', tokens:'0',    tool:null,                  window:6 },
+];
+const SC = { waiting:'#ef4444', working:'#22c55e', permission:'#f97316', done:'#3b82f6', error:'#ef4444', idle:'#4b5563' };
+const col = s => SC[s]||'#4b5563';
+
+let selectedId = 'a2'; // default to first waiting
+let pttActive  = false;
+let connected  = false;
+const settings = { vol:true, haptic:true, screen:true, notify:true };
+
+// ── View switching ──────────────────────────────────────────────────
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.view === name));
+  const v = document.getElementById(name + '-view');
+  if (v) v.classList.add('active');
+  if (name === 'agents') renderAgents();
+  if (name === 'voice')  renderVoiceTarget();
+}
+
+// ── Render agents ───────────────────────────────────────────────────
+function renderAgents() {
+  const el = document.getElementById('agent-cards');
+  el.innerHTML = AGENTS.map(a => {
+    const done=a.todos[0], total=a.todos[1];
+    const pct=total>0?(done/total*100).toFixed(0):0;
+    const permRow = a.state==='permission' ? `
+      <div class="ac-perm-row">
+        <button class="ac-btn approve" onclick="event.stopPropagation();approveAgent('${a.id}')">✓ Approve</button>
+        <button class="ac-btn reject"  onclick="event.stopPropagation();rejectAgent('${a.id}')">✗ Reject</button>
+      </div>` : '';
+    const badge = a.state!=='permission'
+      ? `<span class="ac-badge bg-${a.state}">${a.state}</span>` : '';
+    return `<div class="agent-card ${a.id===selectedId?'selected':''}" data-state="${a.state}" onclick="selectAgent('${a.id}')">
+      <div class="ac-header">
+        <span class="ac-dot" style="background:${col(a.state)};${a.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></span>
+        <span class="ac-name">${a.name}</span>
+        ${badge}
+      </div>
+      ${permRow}
+      ${total>0?`<div class="ac-progress">
+        <div class="ac-progress-meta"><span>Todos</span><span>${done}/${total}</span></div>
+        <div class="ac-track"><div class="ac-fill ${a.state==='working'?'working':''}" style="width:${pct}%"></div></div>
+      </div>`:''}
+      <div class="ac-metrics">
+        <div><div class="ac-metric-label">RAM</div><div class="ac-metric-value ${parseFloat(a.ram)>2?'hot':''}">${a.ram}</div></div>
+        <div><div class="ac-metric-label">Tokens</div><div class="ac-metric-value">${a.tokens}</div></div>
+      </div>
+      <div class="ac-activity">
+        <span class="ac-act-dot ${a.state==='working'?'working':''}"></span>
+        <span>${a.tool||'—'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectAgent(id) {
+  selectedId = id;
+  renderAgents();
+  renderVoiceTarget();
+  haptic();
+  showToast('Target: ' + AGENTS.find(a=>a.id===id)?.name);
+}
+
+function approveAgent(id) {
+  const a = AGENTS.find(x=>x.id===id);
+  if (a) { a.state='working'; a.tool='bash: approved...'; renderAgents(); haptic('medium'); showToast('✓ Approved'); }
+}
+function rejectAgent(id) {
+  const a = AGENTS.find(x=>x.id===id);
+  if (a) { a.state='waiting'; a.tool=null; renderAgents(); haptic(); showToast('✗ Rejected'); }
+}
+
+// ── Voice target ────────────────────────────────────────────────────
+function renderVoiceTarget() {
+  const a = AGENTS.find(x=>x.id===selectedId);
+  document.getElementById('vt-name').textContent = a ? a.name : 'none';
+  const dot = document.getElementById('vt-dot');
+  dot.style.background = a ? col(a.state) : 'var(--muted)';
+  dot.className = 'vt-dot' + (pttActive ? ' listening' : '');
+}
+
+// ── PTT ─────────────────────────────────────────────────────────────
+let waveAnim, analyser, waveArray, waveData=new Array(100).fill(0);
+const waveCanvas = document.getElementById('waveform-canvas');
+const waveCtx = waveCanvas.getContext('2d');
+
+function startPTT() {
+  if (pttActive) return;
+  pttActive = true;
+  document.getElementById('ptt-btn').classList.add('active');
+  document.getElementById('bb-ptt').classList.add('primary');
+  document.getElementById('ptt-label').textContent = '● Recording…';
+  document.getElementById('vt-dot').classList.add('listening');
+  haptic('light');
+  drawWave(true);
+  navigator.mediaDevices?.getUserMedia({audio:true}).then(stream => {
+    const ctx = new AudioContext();
+    analyser = ctx.createAnalyser(); analyser.fftSize=256;
+    waveArray = new Uint8Array(analyser.frequencyBinCount);
+    ctx.createMediaStreamSource(stream).connect(analyser);
+  }).catch(()=>{analyser=null;});
+}
+function stopPTT() {
+  if (!pttActive) return;
+  pttActive = false;
+  document.getElementById('ptt-btn').classList.remove('active');
+  document.getElementById('ptt-label').textContent = 'Hold to talk';
+  document.getElementById('vt-dot').classList.remove('listening');
+  haptic('light');
+  cancelAnimationFrame(waveAnim);
+  drawWave(false);
+  analyser = null;
+  // Mock: add transcript entry
+  const a = AGENTS.find(x=>x.id===selectedId);
+  if (a) addTranscript('user', '(voice command sent to ' + a.name + ')');
+  setTimeout(() => {
+    if (a) addTranscript('agent', 'Processing your voice command…');
+  }, 700);
+}
+
+function drawWave(active) {
+  const W = waveCanvas.clientWidth || 300, H=60;
+  waveCanvas.width = W;
+  if (active && analyser) {
+    analyser.getByteTimeDomainData(waveArray);
+    waveData.push((waveArray[0]-128)/128);
+  } else if (active) {
+    waveData.push((Math.random()-.5)*0.7+Math.sin(Date.now()/150)*0.25);
+  } else {
+    waveData.push((Math.random()-.5)*0.05);
+  }
+  if (waveData.length > W) waveData.shift();
+  waveCtx.clearRect(0,0,W,H);
+  waveCtx.fillStyle='rgba(255,255,255,.025)'; waveCtx.fillRect(0,0,W,H);
+  waveCtx.beginPath();
+  waveCtx.strokeStyle = active ? 'rgba(239,68,68,.85)' : 'rgba(108,92,231,.4)';
+  waveCtx.lineWidth=2;
+  waveCtx.shadowColor = active?'rgba(239,68,68,.3)':'rgba(108,92,231,.2)';
+  waveCtx.shadowBlur = active?6:3;
+  const step=W/waveData.length;
+  for(let i=0;i<waveData.length;i++){
+    const x=i*step, y=H/2+waveData[i]*(H/2-6);
+    if(i===0) waveCtx.moveTo(x,y); else waveCtx.lineTo(x,y);
+  }
+  waveCtx.stroke();
+  if (active) waveAnim = requestAnimationFrame(()=>drawWave(active));
+}
+
+// ── Transcript ──────────────────────────────────────────────────────
+function addTranscript(role, text) {
+  const el = document.getElementById('voice-transcript');
+  const div = document.createElement('div');
+  div.className='tr-msg';
+  const icon = role==='user'?'🗣️':role==='agent'?'🤖':'✋';
+  div.innerHTML=`<span class="tr-icon">${icon}</span><span class="tr-text ${role}">${text}</span>`;
+  el.appendChild(div);
+  el.scrollTop=el.scrollHeight;
+}
+
+// ── Quick commands ──────────────────────────────────────────────────
+function sendQuickCmd(cmd) {
+  const a=AGENTS.find(x=>x.id===selectedId);
+  addTranscript('user', cmd + (a?' → '+a.name:''));
+  haptic();
+  showToast('Sent: ' + cmd);
+  setTimeout(()=>{
+    if(a) addTranscript('agent','Processing: '+cmd+'…');
+  }, 600);
+}
+
+// ── Gesture actions ─────────────────────────────────────────────────
+const actionMsgs = {
+  'next':'→ next window','prev':'← prev window',
+  'scroll-up':'↑ scroll up','scroll-down':'↓ scroll down',
+  'jump-red':'⚡ jump to waiting','voice-toggle':'🎙 voice toggle',
+  'approve':'✓ approve','reject':'✗ reject'
+};
+function sendGesture(action) {
+  haptic();
+  showToast(actionMsgs[action]||action);
+  if (action==='next') {
+    const idx=AGENTS.findIndex(a=>a.id===selectedId);
+    selectAgent(AGENTS[(idx+1)%AGENTS.length].id);
+  } else if (action==='prev') {
+    const idx=AGENTS.findIndex(a=>a.id===selectedId);
+    selectAgent(AGENTS[(idx-1+AGENTS.length)%AGENTS.length].id);
+  } else if (action==='jump-red') {
+    const red=AGENTS.find(a=>a.state==='waiting'||a.state==='permission');
+    if(red) selectAgent(red.id);
+  } else if (action==='approve') {
+    const a=AGENTS.find(x=>x.id===selectedId);
+    if(a&&a.state==='permission') approveAgent(a.id);
+  } else if (action==='reject') {
+    const a=AGENTS.find(x=>x.id===selectedId);
+    if(a&&a.state==='permission') rejectAgent(a.id);
+  }
+}
+
+// ── Settings ────────────────────────────────────────────────────────
+function toggleSetting(key) {
+  settings[key]=!settings[key];
+  document.getElementById('toggle-'+key).classList.toggle('on',settings[key]);
+}
+
+// ── Connect ─────────────────────────────────────────────────────────
+function toggleConnect() {
+  connected=!connected;
+  const btn=document.getElementById('connect-btn');
+  const dot=document.getElementById('conn-dot');
+  const lbl=document.getElementById('conn-label');
+  if (connected) {
+    btn.textContent='Disconnect'; btn.style.borderColor='rgba(239,68,68,.35)';
+    btn.style.background='rgba(239,68,68,.12)'; btn.style.color='var(--waiting)';
+    dot.className='connected'; lbl.textContent='connected';
+    showToast('Connected to ' + document.getElementById('host-input').value);
+    // Start mock state polling
+    startMockPoll();
+  } else {
+    btn.textContent='Connect'; btn.style.borderColor=''; btn.style.background=''; btn.style.color='';
+    dot.className=''; lbl.textContent='disconnected';
+    showToast('Disconnected');
+  }
+}
+
+// ── Haptic feedback ─────────────────────────────────────────────────
+function haptic(type='light') {
+  if (!settings.haptic) return;
+  if (!navigator.vibrate) return;
+  const patterns={light:[10],medium:[20],heavy:[40]};
+  navigator.vibrate(patterns[type]||patterns.light);
+}
+
+// ── Toast ────────────────────────────────────────────────────────────
+let toastTimer=null;
+function showToast(msg) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),1400);
+}
+
+// ── Mock state drift ─────────────────────────────────────────────────
+function startMockPoll() {
+  setInterval(()=>{
+    const a=AGENTS[Math.floor(Math.random()*AGENTS.length)];
+    if(a.state==='working'&&Math.random()>.72){a.state=Math.random()>.5?'waiting':'done';a.tool=null;}
+    else if(a.state==='waiting'&&Math.random()>.8){a.state='working';a.tool='bash: running...';}
+    renderAgents(); renderVoiceTarget();
+    // Permission notification
+    const perm=AGENTS.find(a=>a.state==='permission');
+    if(perm&&settings.notify&&Math.random()>.85) showToast('⚠ '+perm.name+' needs approval');
+  },4000);
+}
+
+// ── Wake lock ───────────────────────────────────────────────────────
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && settings.screen) {
+      await navigator.wakeLock.request('screen');
+    }
+  } catch(e) {}
+}
+requestWakeLock();
+
+// ── Init ─────────────────────────────────────────────────────────────
+renderAgents();
+drawWave(false);
+</script>
+</body>
+</html>

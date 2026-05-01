@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux · UI Systems</title>
+<style>
+:root {
+  --bg:      #07090f;
+  --surface: #0d1117;
+  --card:    #0f1419;
+  --border:  rgba(255,255,255,0.07);
+  --muted:   #6e7681;
+  --text:    #e6edf3;
+  --accent:  #6c5ce7;
+  --cyan:    #00d2ff;
+  --glass-bg:     rgba(13,17,23,0.82);
+  --glass-blur:   blur(14px) saturate(180%);
+  --glass-border: 1px solid rgba(255,255,255,0.07);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'SF Pro Text','Inter',system-ui,sans-serif;font-size:14px;}
+body{padding:0 0 60px;}
+
+header{
+  padding:32px 48px 28px;
+  border-bottom:var(--glass-border);
+  background:var(--glass-bg);
+  backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  position:sticky;top:0;z-index:10;
+}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 2.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+h1{font-size:22px;font-weight:800;letter-spacing:-0.04em;}
+.sub{margin-top:4px;font-size:13px;color:var(--muted);max-width:600px;line-height:1.6;}
+
+main{padding:40px 48px;max-width:1100px;}
+
+.section-label{
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:16px;
+}
+
+.demo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-bottom:40px;}
+
+.demo-card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:20px 22px;
+  text-decoration:none;color:inherit;
+  transition:border-color 180ms ease,box-shadow 180ms ease,transform 100ms ease;
+  display:block;
+}
+.demo-card:hover{
+  border-color:rgba(108,92,231,.4);
+  box-shadow:0 0 0 1px rgba(108,92,231,.2),0 8px 24px rgba(0,0,0,.4);
+  transform:translateY(-2px);
+}
+.dc-num{
+  font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:10px;
+}
+.dc-title{font-size:16px;font-weight:800;letter-spacing:-0.02em;color:var(--text);margin-bottom:6px;}
+.dc-desc{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:14px;}
+.dc-tags{display:flex;gap:6px;flex-wrap:wrap;}
+.tag{
+  font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 8px;border-radius:4px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);
+  color:var(--muted);
+}
+.tag.camera{background:rgba(0,210,255,.08);border-color:rgba(0,210,255,.2);color:var(--cyan);}
+.tag.gesture{background:rgba(108,92,231,.1);border-color:rgba(108,92,231,.25);color:#a78bfa;}
+.tag.live{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.2);color:#4ade80;}
+.tag.mock{background:rgba(75,85,99,.15);border-color:rgba(75,85,99,.3);color:var(--muted);}
+.tag.voice{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:#f87171;}
+
+.notes-card{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px;
+}
+.notes-card h3{font-size:14px;font-weight:700;margin-bottom:10px;}
+.notes-card ul{padding-left:18px;display:flex;flex-direction:column;gap:6px;}
+.notes-card li{font-size:12px;color:var(--muted);line-height:1.6;}
+.notes-card li strong{color:var(--text);}
+.notes-card a{color:var(--accent);text-decoration:none;}
+.notes-card a:hover{text-decoration:underline;}
+
+.framework-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:40px;}
+.fw-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;}
+.fw-card h3{font-size:14px;font-weight:700;margin-bottom:6px;}
+.fw-card p{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px;}
+.fw-status{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;}
+.fw-dot{width:7px;height:7px;border-radius:50%;}
+.fw-dot.green{background:#22c55e;box-shadow:0 0 8px #22c55e;}
+.fw-dot.yellow{background:#eab308;}
+.fw-props{display:flex;flex-direction:column;gap:4px;margin-top:10px;}
+.fw-prop{font-size:11px;color:var(--muted);}
+.fw-prop strong{color:var(--text);}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="brand-dot"></div><h1>gmux · UI Demos</h1></div>
+  <p class="sub">Independent UI layer — no Tauri, no tmux, no backend required. Mock data is built in and animates. Wire to the real stack once a system feels right. All systems auto-detect Tauri and switch to live data when running inside the app.</p>
+  <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+    <a href="RUNNING.md" style="padding:6px 14px;border-radius:6px;background:rgba(108,92,231,.15);border:1px solid rgba(108,92,231,.3);color:var(--accent);font-size:12px;font-weight:700;text-decoration:none">📖 Running Guide</a>
+    <span style="font-size:12px;color:var(--muted)">Start: <code style="background:rgba(255,255,255,.05);padding:2px 6px;border-radius:4px;font-size:11px">./serve.sh</code> → <strong>http://localhost:5550</strong></span>
+    <a href="DEMO.html" style="padding:6px 14px;border-radius:6px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#4ade80;font-size:12px;font-weight:700;text-decoration:none">▶ Open Best Demo</a>
+  </div>
+</header>
+
+<main>
+  <div class="section-label">★ Latest build (v2.3)</div>
+  <div class="demo-grid">
+
+    <a class="demo-card" href="v2/index.html" style="border-color:rgba(108,92,231,.3);background:linear-gradient(180deg,rgba(108,92,231,.06),var(--card))">
+      <div class="dc-num" style="color:#a78bfa">v2.3 · DEV</div>
+      <div class="dc-title">gmux v2.3 — current build</div>
+      <div class="dc-desc">Modular dev build. Sessions, tabs, sidebar, pane grid (Tasks/Chat/Hardware), gesture pinch-click, voice waveform + transcript, tokens/sec sparkline, cost estimate, tool history timeline, theme presets, gesture tutorial (?). Edit <code>v2/index.html</code> directly.</div>
+      <div class="dc-tags">
+        <span class="tag gesture">Pinch click</span>
+        <span class="tag voice">Live mic</span>
+        <span class="tag live">Sparklines</span>
+        <span class="tag">10 themes</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="gmux-demo.html" style="border-color:rgba(34,197,94,.3);background:linear-gradient(180deg,rgba(34,197,94,.06),var(--card))">
+      <div class="dc-num" style="color:#4ade80">SHARE · SHIPPABLE</div>
+      <div class="dc-title">gmux-demo.html — single-file</div>
+      <div class="dc-desc">Built from v2/ with all <code>shared/</code> modules inlined. Drop-in for <a href="https://gmux.ai/demo">gmux.ai/demo</a> or any static host. Auto-shows demo banner. <code>./build-demo.sh</code> to rebuild after changes to v2.</div>
+      <div class="dc-tags">
+        <span class="tag live">Single file</span>
+        <span class="tag">Embeddable</span>
+        <span class="tag">~225 KB</span>
+      </div>
+    </a>
+
+  </div>
+
+  <div class="section-label">UI Systems — Fully Fleshed</div>
+  <div class="demo-grid">
+
+    <a class="demo-card" href="systems/A-ambient-glass/index.html">
+      <div class="dc-num" style="color:#a78bfa">System A</div>
+      <div class="dc-title">Ambient Glass</div>
+      <div class="dc-desc">Frosted glass cards with arc gauges for RAM/CPU, per-agent colour auras that bleed into the background, Focus view, ambient radial gradients. Premium desktop aesthetic.</div>
+      <div class="dc-tags">
+        <span class="tag gesture">Gestures</span>
+        <span class="tag live">Arc gauges</span>
+        <span class="tag">Glass UI</span>
+        <span class="tag">Mock + Tauri</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="systems/B-dense-terminal/index.html">
+      <div class="dc-num" style="color:#4ab8d8">System B</div>
+      <div class="dc-title">Dense Terminal</div>
+      <div class="dc-desc">Zellij-inspired pane grid with pane dimming — inactive agents fade to 72%. Mock terminal output per pane, Powerline statusbar, detail panel, per-pane metrics footer.</div>
+      <div class="dc-tags">
+        <span class="tag gesture">Gestures</span>
+        <span class="tag">Pane dimming</span>
+        <span class="tag">Terminal output</span>
+        <span class="tag">Mock + Tauri</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="systems/C-projector-focus/index.html">
+      <div class="dc-num" style="color:#a090ff">System C</div>
+      <div class="dc-title">Projector Focus</div>
+      <div class="dc-desc">Cinema-scale. One agent at a time. 48px name, 28px metrics. Readable at 3–5 metres. Left nav strip, right info strip, mini fleet bar at bottom. Large approve buttons.</div>
+      <div class="dc-tags">
+        <span class="tag gesture">Gestures</span>
+        <span class="tag">TV / Projector</span>
+        <span class="tag">Large type</span>
+        <span class="tag">Mock + Tauri</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="systems/D-command-grid/index.html">
+      <div class="dc-num" style="color:#5b8af0">System D</div>
+      <div class="dc-title">Command Grid</div>
+      <div class="dc-desc">Raycast-style. ⌘K to search agents. Filterable list (All / Active / Attention). Command palette with contextual actions. Gesture HUD in statusbar. Single blue accent.</div>
+      <div class="dc-tags">
+        <span class="tag gesture">Gestures</span>
+        <span class="tag">Search</span>
+        <span class="tag">Command palette</span>
+        <span class="tag">Mock + Tauri</span>
+      </div>
+    </a>
+
+  </div>
+
+  <div class="section-label">Component Demos</div>
+  <div class="demo-grid">
+
+    <a class="demo-card" href="demos/01-gesture-playground/index.html">
+      <div class="dc-num">01</div>
+      <div class="dc-title">Gesture Playground</div>
+      <div class="dc-desc">Full-screen live hand tracking. Both hands simultaneously. Skeleton, trails, gesture labels, confidence bars, extended canvas zone. Left open palm toggles gesture reference.</div>
+      <div class="dc-tags">
+        <span class="tag camera">Camera</span>
+        <span class="tag gesture">MediaPipe</span>
+        <span class="tag live">Live gestures</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="demos/02-fleet-view/index.html">
+      <div class="dc-num">02</div>
+      <div class="dc-title">Fleet View</div>
+      <div class="dc-desc">Agent dashboard with all 5 layout modes: Fleet, Focus, Pair, Review, Broadcast. Mock agent cards with live state animation, RAM/token metrics, todo progress. Keyboard navigable.</div>
+      <div class="dc-tags">
+        <span class="tag mock">Mock data</span>
+        <span class="tag">5 layouts</span>
+        <span class="tag">State animation</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="demos/03-full-ui/index.html">
+      <div class="dc-num">03</div>
+      <div class="dc-title">Full UI</div>
+      <div class="dc-desc">The complete combined interface: agent fleet + sidebar + gesture PiP panel. Camera enables gesture control. Right swipe navigates agents, left POINT toggles voice, THREE jumps to waiting.</div>
+      <div class="dc-tags">
+        <span class="tag camera">Camera optional</span>
+        <span class="tag gesture">Gesture control</span>
+        <span class="tag voice">Voice target</span>
+        <span class="tag mock">Mock data</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="demos/04-projector/index.html">
+      <div class="dc-num">04</div>
+      <div class="dc-title">Projector Mode</div>
+      <div class="dc-desc">Large-format display for TV/wall. 32px agent name, prominent state, mini fleet strip. Readable from 3m. Keyboard nav with large action flashes. Designed for "from the couch" use.</div>
+      <div class="dc-tags">
+        <span class="tag">Large type</span>
+        <span class="tag">TV / wall</span>
+        <span class="tag mock">Mock data</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="demos/05-voice-gesture/index.html">
+      <div class="dc-num">05</div>
+      <div class="dc-title">Voice + Gesture</div>
+      <div class="dc-desc">Voice targeting UI: waveform visualizer, live/mock transcript, agent selection. Gesture panel shows live hand state. Type or mic. Gesture state mock simulates recognition events.</div>
+      <div class="dc-tags">
+        <span class="tag voice">Mic input</span>
+        <span class="tag">Transcript</span>
+        <span class="tag gesture">Gesture state</span>
+        <span class="tag mock">Mock STT</span>
+      </div>
+    </a>
+
+  </div>
+
+  <div class="section-label">Mobile Apps</div>
+  <div class="demo-grid">
+
+    <a class="demo-card" href="mobile/android/index.html">
+      <div class="dc-num">Android</div>
+      <div class="dc-title">Android Remote</div>
+      <div class="dc-desc">Material-adjacent PWA: agent cards with approve/reject, PTT voice with real mic waveform, gesture action buttons, quick command chips, settings with connect/disconnect. Volume keys cycle windows. Haptic feedback. Screen wake lock.</div>
+      <div class="dc-tags">
+        <span class="tag voice">PTT mic</span>
+        <span class="tag">Haptic</span>
+        <span class="tag">Wake lock</span>
+        <span class="tag mock">Mock data</span>
+      </div>
+    </a>
+
+    <a class="demo-card" href="mobile/ios/index.html">
+      <div class="dc-num">iOS</div>
+      <div class="dc-title">iOS Remote</div>
+      <div class="dc-desc">iOS HIG-native PWA: Dynamic Island safe area, iOS segment control, grouped list with inline expand, large PTT button with ring animation, iOS toggles, bottom tab bar, translucent blur nav. Add to Home Screen to run full-screen.</div>
+      <div class="dc-tags">
+        <span class="tag voice">PTT mic</span>
+        <span class="tag">iOS HIG</span>
+        <span class="tag">Safe areas</span>
+        <span class="tag mock">Mock data</span>
+      </div>
+    </a>
+
+  </div>
+
+  <div class="section-label">Framework Research</div>
+  <div class="framework-grid">
+    <div class="fw-card">
+      <h3>Tauri v2 (primary)</h3>
+      <p>Rust backend gives native PTY, global shortcuts, and ~5MB bundle. WKWebView on macOS supports backdrop-filter. Real vibrancy via <code>WindowEffect::UnderWindow</code> in Rust.</p>
+      <div class="fw-status"><div class="fw-dot green"></div>macOS ✓ · Linux ✓ · Windows ✓</div>
+      <div class="fw-props">
+        <div class="fw-prop"><strong>macOS vibrancy:</strong> native via tauri::window::set_effects()</div>
+        <div class="fw-prop"><strong>Camera:</strong> needs NSCameraUsageDescription in plist</div>
+        <div class="fw-prop"><strong>MediaPipe WASM:</strong> ⚠ test SIMD on WKWebView/Safari</div>
+        <div class="fw-prop"><strong>Bundle:</strong> ~5MB vs Electron's ~150MB</div>
+      </div>
+    </div>
+    <div class="fw-card">
+      <h3>Electron (research)</h3>
+      <p>Full Chromium means MediaPipe WASM works reliably. Native vibrancy via <code>win.setVibrancy('under-window')</code>. Heavier but easier cross-platform packaging.</p>
+      <div class="fw-status"><div class="fw-dot yellow"></div>macOS ✓ · Linux ✓ · Windows ✓ (Mica)</div>
+      <div class="fw-props">
+        <div class="fw-prop"><strong>macOS vibrancy:</strong> BrowserWindow vibrancy: 'under-window'</div>
+        <div class="fw-prop"><strong>Camera:</strong> zero config in Chromium</div>
+        <div class="fw-prop"><strong>MediaPipe WASM:</strong> ✓ full Chromium, no concerns</div>
+        <div class="fw-prop"><strong>PTY:</strong> needs node-pty npm package</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Key Design Decisions</div>
+  <div class="notes-card">
+    <h3>Extended Canvas Zone</h3>
+    <ul>
+      <li><strong>Problem:</strong> MediaPipe gives [0,1] normalized coords. Hands near the frame edge disappear abruptly when they cross the boundary.</li>
+      <li><strong>Solution:</strong> Remap landmark coordinates from <code>[0,1]</code> to <code>[-0.12, 1.12]</code> before passing to the renderer. This expands the drawn area 12% on all sides — hands tracked at the edge are drawn slightly outside the visible frame, so their disappearance is gradual, not a cliff.</li>
+      <li><strong>Visual cue:</strong> A dashed border ring around the camera PiP activates when a hand wrist is within 10% of the edge — indicates "extended zone active".</li>
+      <li><strong>Used in:</strong> Demo 01 (full screen) and Demo 03 (PiP panel).</li>
+    </ul>
+    <br/>
+    <h3>Gesture → Voice Target Flow</h3>
+    <ul>
+      <li>Selecting an agent (swipe / click) immediately sets that agent as the voice target</li>
+      <li>Left POINT toggles mic — voice goes to whoever is selected</li>
+      <li>Left THREE jumps to the next <em>waiting</em> or <em>permission</em> agent and targets that one</li>
+      <li>Visual: sidebar row gets a red tint + mic icon, card gets a red top bar sweep animation</li>
+    </ul>
+    <br/>
+    <h3>State Colour System</h3>
+    <ul>
+      <li>State is communicated via <strong>colour only</strong>, never via text alone — the coloured dot is readable from 3m on a projector</li>
+      <li>Cards use <code>box-shadow: 0 0 0 1px rgba(color, 0.x)</code> glow — strong enough to read across the room, subtle enough not to scream</li>
+      <li>Permission state pulses (CSS animation) — it's the only state that demands immediate attention</li>
+      <li>Working state has an animated dot ring (ripple expand) — distinct from the static dots of other states</li>
+    </ul>
+  </div>
+</main>
+</body>
+</html>

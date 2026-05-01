@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux · Ambient Glass</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   SYSTEM A — AMBIENT GLASS
+   Design language: layered frosted glass, radial gradients,
+   per-agent colour auras, process rings, RAM/CPU arcs.
+   Inspired by: macOS Monterey widgets, Linear, Apple Shortcuts.
+   Best for: desktop ambient display, second monitor.
+═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:           #060810;
+  --surface:      #0b0f1a;
+  --card:         rgba(14, 20, 36, 0.85);
+  --border:       rgba(255,255,255,0.07);
+  --border-hi:    rgba(255,255,255,0.13);
+  --muted:        #5a6480;
+  --text:         #dde3f0;
+  --text-dim:     #8892a8;
+  --accent:       #6c5ce7;
+  --cyan:         #00d2ff;
+
+  --waiting:      #ef4444;
+  --working:      #22c55e;
+  --permission:   #f97316;
+  --done:         #3b82f6;
+  --error:        #ef4444;
+  --idle:         #374151;
+
+  --glass:        rgba(12, 18, 32, 0.78);
+  --glass-md:     rgba(14, 20, 36, 0.70);
+  --glass-hi:     rgba(20, 28, 48, 0.60);
+  --blur-sm:      blur(8px) saturate(160%);
+  --blur-md:      blur(16px) saturate(180%) brightness(1.02);
+  --blur-lg:      blur(28px) saturate(160%) brightness(1.03);
+  --shadow-card:  0 0 0 1px rgba(255,255,255,0.05) inset,
+                  0 4px 16px rgba(0,0,0,0.6),
+                  0 16px 48px rgba(0,0,0,0.4);
+
+  --topbar-h: 52px;
+  --sidebar-w: 72px;
+  --font: 'SF Pro Text','Inter',system-ui,sans-serif;
+  --mono: 'SF Mono','Fira Code','Menlo',monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Ambient background: radial gradient auras ── */
+#bg-canvas {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+}
+
+/* ── App shell ── */
+#app {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-rows: var(--topbar-h) 1fr 28px;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  height: 100vh;
+}
+
+/* ── Topbar (spans both columns) ── */
+#topbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 20px;
+  background: var(--glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border-bottom: 1px solid var(--border);
+  /* macOS traffic light padding — safe for Tauri transparent titlebar */
+  padding-left: 80px;
+}
+/* When running in Tauri with transparent titlebar, apply this class */
+body.tauri-macos #topbar { padding-left: 80px; }
+body.tauri-linux #topbar,
+body.tauri-windows #topbar { padding-left: 20px; }
+
+.brand {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 15px; font-weight: 800; letter-spacing: -0.03em;
+  padding-right: 16px; border-right: 1px solid var(--border);
+  -webkit-app-region: no-drag;
+}
+.brand-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 12px var(--accent);
+  animation: pulse-brand 3s ease-in-out infinite;
+}
+@keyframes pulse-brand { 0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.4)} }
+
+/* Drag region for Tauri */
+.drag-region {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--topbar-h);
+  -webkit-app-region: drag;
+  pointer-events: none; z-index: 0;
+}
+
+#session-label {
+  font-size: 12px; font-weight: 600; color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+#wave-badge {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 5px;
+  background: rgba(108,92,231,0.15); color: var(--accent);
+  border: 1px solid rgba(108,92,231,0.3);
+}
+.topbar-spacer { flex: 1; -webkit-app-region: drag; }
+#global-stats {
+  display: flex; align-items: center; gap: 16px;
+  font-size: 12px; color: var(--text-dim);
+  -webkit-app-region: no-drag;
+}
+.gs-item { display: flex; align-items: center; gap: 5px; }
+.gs-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+/* Layout selector */
+#layout-sel {
+  display: flex; gap: 2px; padding: 3px;
+  background: rgba(255,255,255,0.04); border-radius: 7px;
+  -webkit-app-region: no-drag;
+}
+.layout-btn {
+  padding: 4px 10px; border-radius: 5px;
+  font-family: var(--font); font-size: 11px; font-weight: 700;
+  color: var(--muted); background: none; border: none; cursor: pointer;
+  transition: all 120ms ease;
+}
+.layout-btn:hover  { color: var(--text); background: rgba(255,255,255,0.06); }
+.layout-btn.active { color: var(--text); background: rgba(108,92,231,0.2); }
+
+/* Control buttons */
+.ctrl-btn {
+  padding: 5px 12px; border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--muted); font-family: var(--font); font-size: 11px; font-weight: 600;
+  background: none; cursor: pointer; transition: all 120ms ease;
+  -webkit-app-region: no-drag;
+}
+.ctrl-btn:hover  { color: var(--text); border-color: var(--border-hi); }
+.ctrl-btn.active { color: #a78bfa; border-color: rgba(167,139,250,0.4); background: rgba(108,92,231,0.12); }
+
+/* ── Sidebar: icon nav ── */
+#sidebar {
+  grid-column: 1;
+  background: var(--glass);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 0; gap: 6px;
+  overflow: hidden;
+}
+.side-btn {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; cursor: pointer; transition: all 140ms ease;
+  border: 1px solid transparent; background: none;
+  font-family: var(--font); position: relative;
+}
+.side-btn:hover  { background: rgba(255,255,255,0.05); border-color: var(--border); }
+.side-btn.active { background: rgba(108,92,231,0.15); border-color: rgba(108,92,231,0.35); }
+.side-icon { font-size: 18px; line-height: 1; }
+.side-label { font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); }
+.side-btn.active .side-label { color: var(--accent); }
+.side-badge {
+  position: absolute; top: 4px; right: 4px;
+  min-width: 14px; height: 14px; border-radius: 7px;
+  background: var(--waiting); color: #fff;
+  font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+  padding: 0 3px;
+}
+.side-sep { width: 28px; height: 1px; background: var(--border); margin: 4px 0; }
+
+/* ── Main content ── */
+#main {
+  grid-column: 2;
+  overflow: hidden;
+  position: relative;
+  display: flex; flex-direction: column;
+}
+
+/* ── Views ── */
+.view { display: none; flex: 1; overflow: hidden; }
+.view.active { display: flex; }
+
+/* ══════════════════════════════════
+   FLEET VIEW
+══════════════════════════════════ */
+#fleet-view {
+  flex-direction: column;
+  overflow: hidden;
+}
+#fleet-scroll {
+  flex: 1; overflow-y: auto; padding: 16px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+#fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  transition: grid-template-columns 300ms cubic-bezier(0.4,0,0.2,1);
+}
+#fleet-grid.layout-2col { grid-template-columns: repeat(2, 1fr); }
+#fleet-grid.layout-3col { grid-template-columns: repeat(3, 1fr); }
+#fleet-grid.layout-4col { grid-template-columns: repeat(4, 1fr); }
+
+/* ── Agent Card — The heart of System A ── */
+.agent-card {
+  background: var(--card);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border);
+  border-top: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  position: relative; overflow: hidden;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 120ms ease;
+  box-shadow: var(--shadow-card);
+}
+.agent-card:hover { transform: translateY(-2px); border-color: var(--border-hi); }
+.agent-card.selected {
+  border-color: rgba(108,92,231,0.5) !important;
+  box-shadow: 0 0 0 1px rgba(108,92,231,0.25), 0 8px 32px rgba(108,92,231,0.15), var(--shadow-card) !important;
+}
+
+/* State-specific border glow */
+.agent-card[data-state="waiting"]      { border-color: rgba(239,68,68,0.30); box-shadow: 0 0 0 1px rgba(239,68,68,0.12), 0 0 32px rgba(239,68,68,0.06), var(--shadow-card); }
+.agent-card[data-state="working"]      { border-color: rgba(34,197,94,0.22);  box-shadow: 0 0 0 1px rgba(34,197,94,0.08), var(--shadow-card); }
+.agent-card[data-state="permission"]   { border-color: rgba(249,115,22,0.40); box-shadow: 0 0 0 1px rgba(249,115,22,0.18), 0 0 32px rgba(249,115,22,0.10), var(--shadow-card); animation: perm-glow 2s ease-in-out infinite; }
+.agent-card[data-state="sub_permission"]{ border-color: rgba(249,115,22,0.30); box-shadow: 0 0 0 1px rgba(249,115,22,0.12), var(--shadow-card); animation: perm-glow 2s ease-in-out infinite; }
+.agent-card[data-state="done"]         { border-color: rgba(59,130,246,0.20); box-shadow: 0 0 0 1px rgba(59,130,246,0.08), var(--shadow-card); }
+.agent-card[data-state="error"]        { border-color: rgba(239,68,68,0.45); box-shadow: 0 0 0 1px rgba(239,68,68,0.22), 0 0 32px rgba(239,68,68,0.12), var(--shadow-card); }
+@keyframes perm-glow {
+  0%,100% { box-shadow: 0 0 0 1px rgba(249,115,22,0.18), 0 0 28px rgba(249,115,22,0.08), var(--shadow-card); }
+  50%     { box-shadow: 0 0 0 1px rgba(249,115,22,0.38), 0 0 44px rgba(249,115,22,0.18), var(--shadow-card); }
+}
+
+/* Ambient aura behind card (matches state colour) */
+.agent-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 14px;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+.agent-card[data-state="waiting"]::before    { background: radial-gradient(ellipse at 50% 0%, rgba(239,68,68,0.07), transparent 70%); opacity: 1; }
+.agent-card[data-state="working"]::before    { background: radial-gradient(ellipse at 50% 0%, rgba(34,197,94,0.06), transparent 70%);  opacity: 1; }
+.agent-card[data-state="permission"]::before { background: radial-gradient(ellipse at 50% 0%, rgba(249,115,22,0.08), transparent 70%); opacity: 1; }
+.agent-card[data-state="done"]::before       { background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.06), transparent 70%); opacity: 1; }
+.agent-card[data-state="error"]::before      { background: radial-gradient(ellipse at 50% 0%, rgba(239,68,68,0.10), transparent 70%); opacity: 1; }
+
+.card-content { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; }
+
+/* Card header */
+.card-header { display: flex; align-items: center; gap: 10px; }
+.card-state-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  position: relative;
+  transition: background 300ms ease;
+}
+.card-state-dot[data-state="working"]::after {
+  content: '';
+  position: absolute; inset: -3px;
+  border-radius: 50%; border: 1.5px solid currentColor;
+  animation: dot-ring 1.6s ease-out infinite; opacity: 0;
+}
+@keyframes dot-ring { 0%{opacity:.7;transform:scale(1)} 100%{opacity:0;transform:scale(2.2)} }
+.card-name {
+  flex: 1; font-size: 15px; font-weight: 800; letter-spacing: -0.02em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-win-num {
+  font-size: 11px; font-weight: 700; font-family: var(--mono);
+  color: var(--muted); background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 6px; flex-shrink: 0;
+}
+.card-state-badge {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 5px; flex-shrink: 0;
+}
+.card-perm-row { display: flex; gap: 6px; }
+.perm-btn {
+  flex: 1; padding: 8px; border-radius: 8px;
+  font-family: var(--font); font-size: 12px; font-weight: 700;
+  cursor: pointer; border: none; transition: all 120ms ease;
+}
+.perm-btn.approve { background: rgba(34,197,94,0.15); color: var(--working); border: 1px solid rgba(34,197,94,0.3); }
+.perm-btn.reject  { background: rgba(239,68,68,0.12); color: var(--waiting);  border: 1px solid rgba(239,68,68,0.25); }
+.perm-btn:active  { transform: scale(0.97); }
+
+/* Todo progress */
+.card-progress { }
+.progress-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+.progress-row .done { color: var(--text); font-weight: 700; font-size: 12px; }
+.progress-track { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width 500ms cubic-bezier(0.4,0,0.2,1); }
+.progress-fill.state-working { background: var(--working); animation: prog-shimmer 1.8s linear infinite; }
+.progress-fill.state-done    { background: var(--done); }
+.progress-fill.state-waiting { background: var(--accent); }
+@keyframes prog-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* Metrics row: RAM arc + CPU arc + tokens */
+.card-metrics { display: flex; align-items: center; gap: 12px; }
+.metric-arc-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0;
+}
+.arc-label { font-size: 10px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
+.arc-value { font-size: 11px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.arc-value.hot { color: var(--waiting); }
+canvas.arc-canvas { display: block; }
+.metric-tokens {
+  flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+}
+.token-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
+.token-row .val { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.metric-model {
+  font-size: 10px; font-weight: 600; color: var(--muted);
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Tool history chips */
+.card-tools { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.tool-chip {
+  font-size: 10px; font-weight: 700; font-family: var(--mono);
+  padding: 2px 7px; border-radius: 4px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-dim);
+}
+.tool-chip.latest { background: rgba(108,92,231,0.12); border-color: rgba(108,92,231,0.25); color: var(--accent); }
+
+/* Last line */
+.card-last-line {
+  font-size: 12px; font-family: var(--mono); color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1.5;
+}
+.card-last-line.working { color: var(--working); }
+.card-last-line.error   { color: var(--waiting); }
+
+/* ══════════════════════════════════
+   FOCUS VIEW (single agent large)
+══════════════════════════════════ */
+#focus-view {
+  flex-direction: row;
+  overflow: hidden;
+  gap: 0;
+}
+#focus-main {
+  flex: 1; padding: 24px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.07) transparent;
+}
+#focus-sidebar {
+  width: 260px; flex-shrink: 0;
+  background: var(--glass);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+  border-left: 1px solid var(--border);
+  overflow-y: auto; padding: 16px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.07) transparent;
+}
+
+/* Focus agent hero card */
+#focus-hero {
+  background: var(--card);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border);
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px; padding: 24px;
+  box-shadow: var(--shadow-card);
+  position: relative; overflow: hidden;
+  margin-bottom: 16px;
+}
+.focus-hero-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.focus-hero-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+.focus-hero-name { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; flex: 1; }
+.focus-hero-badge { font-size: 13px; font-weight: 700; padding: 5px 14px; border-radius: 7px; }
+.focus-metrics-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px;
+}
+.focus-metric {
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+}
+.fm-label { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 5px; }
+.fm-value { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.fm-value.hot { color: var(--waiting); }
+.fm-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* Large progress */
+.focus-progress { margin-bottom: 16px; }
+.fp-header { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+.fp-header .count { font-size: 18px; font-weight: 800; color: var(--text); }
+.fp-track { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+.fp-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 600ms cubic-bezier(0.4,0,0.2,1); }
+.fp-fill.working { background: var(--working); }
+
+/* Tool timeline */
+.focus-tools-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 8px; }
+.tool-timeline { display: flex; align-items: center; gap: 0; }
+.tt-step {
+  display: flex; align-items: center; gap: 0; flex-shrink: 0;
+}
+.tt-chip {
+  font-size: 11px; font-weight: 700; font-family: var(--mono);
+  padding: 4px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text-dim);
+}
+.tt-chip.latest { background: rgba(108,92,231,0.15); border-color: rgba(108,92,231,0.3); color: #a78bfa; }
+.tt-arrow { font-size: 11px; color: var(--muted); padding: 0 5px; }
+
+/* Focus sidebar: mini agent list */
+.focus-sidebar-label { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.focus-mini-agent {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  cursor: pointer; transition: background 100ms ease; margin-bottom: 3px;
+  border: 1px solid transparent;
+}
+.focus-mini-agent:hover { background: rgba(255,255,255,0.04); }
+.focus-mini-agent.active { background: rgba(108,92,231,0.10); border-color: rgba(108,92,231,0.25); }
+.fma-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.fma-name { flex: 1; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fma-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+
+/* ══════════════════════════════════
+   GESTURE OVERLAY (always on top)
+══════════════════════════════════ */
+#gesture-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  pointer-events: none;
+}
+#gesture-video {
+  position: fixed; bottom: 0; right: 0;
+  width: 240px; height: 135px;
+  object-fit: cover; transform: scaleX(-1);
+  opacity: 0.4; border-radius: 12px 0 0 0;
+  display: none;
+}
+#gesture-canvas {
+  position: fixed; bottom: 0; right: 0;
+  width: 240px; height: 135px;
+  display: none;
+}
+#gesture-overlay.active #gesture-video,
+#gesture-overlay.active #gesture-canvas { display: block; }
+
+/* Gesture HUD: bottom-left */
+#gesture-hud {
+  position: fixed; bottom: 40px; left: 88px;
+  display: flex; flex-direction: column; gap: 5px;
+  opacity: 0; transition: opacity 250ms ease; pointer-events: none;
+}
+#gesture-hud.visible { opacity: 1; }
+.ghud-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border);
+  border-top: 1px solid rgba(255,255,255,0.09);
+  border-radius: 9px; padding: 7px 12px; min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.ghud-role { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; width: 36px; flex-shrink: 0; }
+.ghud-role.right { color: var(--cyan); }
+.ghud-role.left  { color: #a78bfa; }
+.ghud-gesture { flex: 1; font-size: 13px; font-weight: 700; }
+.ghud-conf { width: 52px; height: 4px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+.ghud-bar { height: 100%; border-radius: 2px; transition: width 80ms ease, background 80ms ease; }
+
+/* Action toast */
+#action-toast {
+  position: fixed; top: 68px; left: 50%; transform: translateX(-50%);
+  background: var(--glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border);
+  border-top: 1px solid rgba(255,255,255,0.09);
+  border-radius: 9px; padding: 8px 18px;
+  font-size: 13px; font-weight: 700;
+  opacity: 0; transition: opacity 160ms ease;
+  white-space: nowrap; pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+#action-toast.show { opacity: 1; }
+
+/* ══════════════════════════════════
+   STATUS BAR
+══════════════════════════════════ */
+#statusbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 20px 0 calc(var(--sidebar-w) + 10px);
+  background: var(--glass);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+  overflow: hidden;
+}
+.sb-sep { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; }
+kbd {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 3px; padding: 0 5px; font-family: var(--mono); font-size: 10px;
+}
+#sb-source { margin-left: auto; font-size: 10px; }
+.src-live   { color: var(--working); }
+.src-mock   { color: var(--muted); }
+.src-tauri  { color: var(--accent); }
+
+/* ── Colour utility classes ── */
+.bg-waiting    { background: rgba(239,68,68,.13);   color: var(--waiting); }
+.bg-working    { background: rgba(34,197,94,.13);   color: var(--working); }
+.bg-permission { background: rgba(249,115,22,.15);  color: var(--permission); }
+.bg-done       { background: rgba(59,130,246,.13);  color: var(--done); }
+.bg-error      { background: rgba(239,68,68,.15);   color: var(--error); }
+.bg-idle       { background: rgba(75,85,99,.15);    color: var(--muted); }
+
+@keyframes working-dot { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}50%{box-shadow:0 0 0 4px rgba(34,197,94,0)} }
+</style>
+</head>
+<body>
+
+<!-- Ambient gradient canvas -->
+<canvas id="bg-canvas"></canvas>
+
+<!-- Tauri drag region (transparent, covers topbar) -->
+<div class="drag-region"></div>
+
+<!-- Gesture overlay -->
+<div id="gesture-overlay">
+  <video id="gesture-video" autoplay playsinline muted></video>
+  <canvas id="gesture-canvas"></canvas>
+  <div id="gesture-hud">
+    <div class="ghud-row">
+      <span class="ghud-role right">R</span>
+      <span class="ghud-gesture" id="ghud-right">—</span>
+      <div class="ghud-conf"><div class="ghud-bar" id="ghud-rc" style="width:0;background:var(--cyan)"></div></div>
+    </div>
+    <div class="ghud-row">
+      <span class="ghud-role left">L</span>
+      <span class="ghud-gesture" id="ghud-left">—</span>
+      <div class="ghud-conf"><div class="ghud-bar" id="ghud-lc" style="width:0;background:#a78bfa"></div></div>
+    </div>
+  </div>
+  <div id="action-toast"></div>
+</div>
+
+<div id="app">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="brand"><div class="brand-dot"></div>gmux</div>
+    <span id="session-label">session · gmux</span>
+    <span id="wave-badge">wave 2</span>
+
+    <div class="topbar-spacer"></div>
+
+    <div id="global-stats">
+      <div class="gs-item"><div class="gs-dot" style="background:var(--waiting)"></div><span id="gs-waiting">0 waiting</span></div>
+      <div class="gs-item"><div class="gs-dot" style="background:var(--working);animation:working-dot 1.4s ease-in-out infinite"></div><span id="gs-working">0 working</span></div>
+      <div class="gs-item"><div class="gs-dot" style="background:var(--permission)"></div><span id="gs-perm">0 pending</span></div>
+    </div>
+
+    <div id="layout-sel">
+      <button class="layout-btn active" onclick="setLayout('auto')">Auto</button>
+      <button class="layout-btn" onclick="setLayout('2col')">2</button>
+      <button class="layout-btn" onclick="setLayout('3col')">3</button>
+      <button class="layout-btn" onclick="setLayout('4col')">4</button>
+    </div>
+    <button class="ctrl-btn" id="btn-focus" onclick="switchView('focus')">Focus</button>
+    <button class="ctrl-btn" id="btn-gesture" onclick="toggleGesture()">✋</button>
+    <button class="ctrl-btn" id="btn-voice" onclick="toggleVoice()">🎙</button>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <button class="side-btn active" id="sb-fleet" onclick="switchView('fleet')">
+      <span class="side-icon">⊞</span>
+      <span class="side-label">Fleet</span>
+    </button>
+    <button class="side-btn" id="sb-focus" onclick="switchView('focus')">
+      <span class="side-icon">◎</span>
+      <span class="side-label">Focus</span>
+    </button>
+    <div class="side-sep"></div>
+    <button class="side-btn" id="sb-jump" onclick="jumpToRed()" title="Jump to waiting (J)">
+      <span class="side-icon">⚡</span>
+      <span class="side-label">Jump</span>
+      <span class="side-badge" id="sb-red-count" style="display:none"></span>
+    </button>
+    <button class="side-btn" id="sb-voice" onclick="toggleVoice()">
+      <span class="side-icon">🎙</span>
+      <span class="side-label">Voice</span>
+    </button>
+    <div class="side-sep"></div>
+    <button class="side-btn" id="sb-cam" onclick="toggleGesture()">
+      <span class="side-icon">✋</span>
+      <span class="side-label">Gest.</span>
+    </button>
+  </div>
+
+  <!-- Main content -->
+  <div id="main">
+
+    <!-- Fleet view -->
+    <div class="view active" id="fleet-view">
+      <div id="fleet-scroll">
+        <div id="fleet-grid" class="layout-auto"></div>
+      </div>
+    </div>
+
+    <!-- Focus view -->
+    <div class="view" id="focus-view">
+      <div id="focus-main">
+        <div id="focus-hero"></div>
+      </div>
+      <div id="focus-sidebar">
+        <div class="focus-sidebar-label">All Agents</div>
+        <div id="focus-mini-list"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <span id="sb-count"></span>
+    <div class="sb-sep"></div>
+    <span id="sb-summary"></span>
+    <kbd>←→</kbd><span>switch</span>
+    <kbd>J</kbd><span>jump</span>
+    <kbd>F</kbd><span>focus</span>
+    <kbd>G</kbd><span>gesture</span>
+    <kbd>V</kbd><span>voice</span>
+    <span id="sb-source" class="src-mock">● mock data</span>
+  </div>
+</div>
+
+<script type="module">
+import { MOCK_PANES, STATE_COLOR, STATE_LABEL, panesArray, fmtRam, fmtTokens, fmtUptime, ramPct, initDataSource } from '../../shared/mock-data.js';
+import { GestureEngine }   from '../../shared/gesture-engine.js';
+import { GestureRenderer } from '../../shared/gesture-renderer.js';
+
+// ── State ────────────────────────────────────────────────────────────
+let panes      = JSON.parse(JSON.stringify(MOCK_PANES)); // deep copy
+let selectedId = '%2'; // default: first waiting
+let currentView= 'fleet';
+let gestureOn  = false;
+let voiceOn    = false;
+let voiceTarget= '%2';
+let engine, renderer, stream, handLandmarker, lastVT = -1;
+
+// ── Background ambient canvas ────────────────────────────────────────
+const bgCanvas = document.getElementById('bg-canvas');
+const bgCtx    = bgCanvas.getContext('2d');
+
+function drawBackground() {
+  bgCanvas.width  = window.innerWidth;
+  bgCanvas.height = window.innerHeight;
+  bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+  // Base dark gradient
+  const base = bgCtx.createRadialGradient(
+    bgCanvas.width * 0.5, bgCanvas.height * 0.5, 0,
+    bgCanvas.width * 0.5, bgCanvas.height * 0.5, bgCanvas.width * 0.8
+  );
+  base.addColorStop(0, '#0b0f1e');
+  base.addColorStop(1, '#060810');
+  bgCtx.fillStyle = base;
+  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+  // Per-state ambient aura blobs
+  const arr = panesArray(panes);
+  const cols = Math.ceil(Math.sqrt(arr.length));
+  arr.forEach((p, i) => {
+    const col = STATE_COLOR[p.state];
+    if (!col || p.state === 'idle' || p.state === 'not_started') return;
+    const cx = ((i % cols) + 0.5) / cols * bgCanvas.width;
+    const cy = (Math.floor(i / cols) + 0.5) / Math.ceil(arr.length / cols) * bgCanvas.height;
+    const r  = Math.min(bgCanvas.width, bgCanvas.height) * 0.35;
+    const grad = bgCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    // Very subtle — just a tint
+    const alpha = p.state === 'permission' ? 0.04 : p.state === 'waiting' ? 0.03 : 0.02;
+    grad.addColorStop(0, col.replace(')', `, ${alpha})`).replace('rgb', 'rgba'));
+    grad.addColorStop(1, 'transparent');
+    bgCtx.fillStyle = grad;
+    bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+  });
+}
+window.addEventListener('resize', drawBackground);
+drawBackground();
+
+// ── Arc canvas helper ────────────────────────────────────────────────
+function drawArc(canvas, pct, color, label, value) {
+  const size = 48;
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2, cy = size / 2, r = 18;
+  const start = -Math.PI * 0.75, end = Math.PI * 0.75;
+  const sweep = (end - start) * Math.min(1, pct / 100);
+
+  // Track
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, start, end);
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Fill
+  if (pct > 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, start, start + sweep);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.shadowColor = color; ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────
+function render() {
+  const arr = panesArray(panes);
+  renderFleet(arr);
+  if (currentView === 'focus') renderFocus(arr);
+  renderStats(arr);
+  renderStatusBar(arr);
+  renderSidebarBadge(arr);
+  drawBackground();
+}
+
+function renderFleet(arr) {
+  const grid = document.getElementById('fleet-grid');
+  const existing = new Map([...grid.querySelectorAll('.agent-card')].map(el => [el.dataset.paneId, el]));
+
+  arr.forEach(p => {
+    let card = existing.get(p.pane_id);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'agent-card';
+      card.dataset.paneId = p.pane_id;
+      grid.appendChild(card);
+    }
+    existing.delete(p.pane_id);
+    updateCard(card, p);
+  });
+  // Remove stale cards
+  existing.forEach(el => el.remove());
+
+  // Reorder to match arr order
+  arr.forEach(p => {
+    const el = grid.querySelector(`[data-pane-id="${p.pane_id}"]`);
+    if (el) grid.appendChild(el);
+  });
+}
+
+function updateCard(card, p) {
+  const col   = STATE_COLOR[p.state] || STATE_COLOR.idle;
+  const done  = p.todo_done, total = p.todo_total;
+  const pct   = total > 0 ? (done / total * 100).toFixed(0) : 0;
+  const isSelected = p.pane_id === selectedId;
+  const isVoice    = p.pane_id === voiceTarget && voiceOn;
+
+  card.dataset.state = p.state;
+  card.classList.toggle('selected', isSelected);
+
+  const tools  = (p.tool_history || []).slice(-4);
+  const toolHtml = tools.map((t, i) =>
+    `<span class="tool-chip ${i === tools.length - 1 ? 'latest' : ''}">${t}</span>
+     ${i < tools.length - 1 ? '' : ''}`
+  ).join('');
+
+  const permRow = (p.state === 'permission' || p.state === 'sub_permission')
+    ? `<div class="card-perm-row">
+         <button class="perm-btn approve" onclick="event.stopPropagation();approvePane('${p.pane_id}')">✓ Approve</button>
+         <button class="perm-btn reject"  onclick="event.stopPropagation();rejectPane('${p.pane_id}')">✗ Reject</button>
+       </div>` : '';
+
+  const badge = `<span class="card-state-badge bg-${p.state}">${STATE_LABEL[p.state]}</span>`;
+  const ramC  = ramPct(p.ram_mb || 0);
+  const cpuC  = p.cpu_pct || 0;
+  const ramColor = ramC > 80 ? 'var(--waiting)' : ramC > 60 ? 'var(--permission)' : 'var(--cyan)';
+  const cpuColor = cpuC > 80 ? 'var(--waiting)' : cpuC > 60 ? 'var(--permission)' : 'var(--working)';
+
+  card.innerHTML = `
+    <div class="card-content">
+      <div class="card-header">
+        <span class="card-state-dot" data-state="${p.state}" style="background:${col};${p.state==='working'?'animation:working-dot 1.4s ease-in-out infinite;color:'+col:''}"></span>
+        <span class="card-name">${p.window_name}</span>
+        <span class="card-win-num">${p.window_index}</span>
+        ${p.state !== 'permission' && p.state !== 'sub_permission' ? badge : ''}
+      </div>
+      ${permRow}
+      ${total > 0 ? `
+      <div class="card-progress">
+        <div class="progress-row"><span>todos</span><span><span class="done">${done}</span> / ${total}</span></div>
+        <div class="progress-track"><div class="progress-fill state-${p.state}" style="width:${pct}%"></div></div>
+      </div>` : ''}
+      <div class="card-metrics">
+        <div class="metric-arc-wrap">
+          <canvas class="arc-canvas" data-pane="${p.pane_id}" data-type="ram" width="48" height="48"></canvas>
+          <div class="arc-label">RAM</div>
+          <div class="arc-value ${ramC > 70 ? 'hot' : ''}">${fmtRam(p.ram_mb)}</div>
+        </div>
+        <div class="metric-arc-wrap">
+          <canvas class="arc-canvas" data-pane="${p.pane_id}" data-type="cpu" width="48" height="48"></canvas>
+          <div class="arc-label">CPU</div>
+          <div class="arc-value ${cpuC > 70 ? 'hot' : ''}">${cpuC}%</div>
+        </div>
+        <div class="metric-tokens">
+          <div class="token-row"><span>↑ in</span><span class="val">${fmtTokens(p.token_in)}</span></div>
+          <div class="token-row"><span>↓ out</span><span class="val">${fmtTokens(p.token_out)}</span></div>
+          <div class="token-row"><span>⏱</span><span class="val">${fmtUptime(p.uptime_s)}</span></div>
+          ${p.model ? `<div class="metric-model">${p.model}</div>` : ''}
+        </div>
+      </div>
+      ${tools.length > 0 ? `<div class="card-tools">${toolHtml}</div>` : ''}
+      ${p.last_line ? `<div class="card-last-line ${p.state === 'error' ? 'error' : p.state === 'working' ? 'working' : ''}">${p.last_line}</div>` : ''}
+    </div>
+  `;
+
+  // Draw arc canvases after innerHTML is set
+  requestAnimationFrame(() => {
+    const ramArc = card.querySelector('[data-type="ram"]');
+    const cpuArc = card.querySelector('[data-type="cpu"]');
+    if (ramArc) drawArc(ramArc, ramC, ramColor, 'RAM', fmtRam(p.ram_mb));
+    if (cpuArc) drawArc(cpuArc, cpuC, cpuColor, 'CPU', cpuC + '%');
+  });
+
+  card.onclick = () => selectAgent(p.pane_id);
+}
+
+function renderFocus(arr) {
+  const p = panes[selectedId] || arr[0];
+  if (!p) return;
+
+  const col   = STATE_COLOR[p.state] || STATE_COLOR.idle;
+  const done  = p.todo_done, total = p.todo_total;
+  const pct   = total > 0 ? (done / total * 100).toFixed(0) : 0;
+  const ramC  = ramPct(p.ram_mb || 0);
+  const cpuC  = p.cpu_pct || 0;
+  const ramColor = ramC > 80 ? 'var(--waiting)' : 'var(--cyan)';
+  const cpuColor = cpuC > 80 ? 'var(--waiting)' : 'var(--working)';
+
+  const tools = p.tool_history || [];
+  const toolsHtml = tools.map((t, i) =>
+    `<div class="tt-step">
+       <span class="tt-chip ${i === tools.length - 1 ? 'latest' : ''}">${t}</span>
+       ${i < tools.length - 1 ? '<span class="tt-arrow">›</span>' : ''}
+     </div>`
+  ).join('');
+
+  const permBtns = (p.state === 'permission' || p.state === 'sub_permission')
+    ? `<div class="card-perm-row" style="margin-bottom:16px">
+         <button class="perm-btn approve" onclick="approvePane('${p.pane_id}')">✓ Approve</button>
+         <button class="perm-btn reject"  onclick="rejectPane('${p.pane_id}')">✗ Reject</button>
+       </div>` : '';
+
+  document.getElementById('focus-hero').innerHTML = `
+    <div style="position:relative;z-index:1">
+      <div class="focus-hero-header">
+        <span class="focus-hero-dot" style="background:${col};${p.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></span>
+        <span class="focus-hero-name">${p.window_name}</span>
+        <span class="focus-hero-badge bg-${p.state}">${STATE_LABEL[p.state]}</span>
+      </div>
+      ${permBtns}
+      <div class="focus-metrics-grid">
+        <div class="focus-metric">
+          <div class="fm-label">RAM</div>
+          <div class="fm-value ${ramC > 70 ? 'hot' : ''}">${fmtRam(p.ram_mb)}</div>
+          <div class="fm-sub">${ramC}% of 3 GB</div>
+        </div>
+        <div class="focus-metric">
+          <div class="fm-label">CPU</div>
+          <div class="fm-value ${cpuC > 70 ? 'hot' : ''}">${cpuC}%</div>
+          <div class="fm-sub">process load</div>
+        </div>
+        <div class="focus-metric">
+          <div class="fm-label">Tokens</div>
+          <div class="fm-value">${fmtTokens((p.token_in||0)+(p.token_out||0))}</div>
+          <div class="fm-sub">${fmtTokens(p.token_in)}↑ ${fmtTokens(p.token_out)}↓</div>
+        </div>
+        <div class="focus-metric">
+          <div class="fm-label">Todos</div>
+          <div class="fm-value">${done} <span style="font-size:14px;font-weight:400;color:var(--text-dim)">/ ${total}</span></div>
+          <div class="fm-sub">${pct}% done</div>
+        </div>
+        <div class="focus-metric">
+          <div class="fm-label">Uptime</div>
+          <div class="fm-value" style="font-size:18px">${fmtUptime(p.uptime_s)}</div>
+          <div class="fm-sub">window ${p.window_index}</div>
+        </div>
+        <div class="focus-metric">
+          <div class="fm-label">Model</div>
+          <div class="fm-value" style="font-size:13px;font-weight:600">${p.model || '—'}</div>
+          <div class="fm-sub">${p.session_name}</div>
+        </div>
+      </div>
+      ${total > 0 ? `
+      <div class="focus-progress">
+        <div class="fp-header"><span>Todo progress</span><span><span class="count">${done}</span> / ${total}</span></div>
+        <div class="fp-track"><div class="fp-fill ${p.state==='working'?'working':''}" style="width:${pct}%"></div></div>
+      </div>` : ''}
+      ${tools.length > 0 ? `
+      <div>
+        <div class="focus-tools-label">Tool history</div>
+        <div class="tool-timeline">${toolsHtml}</div>
+      </div>` : ''}
+      ${p.last_line ? `
+      <div style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:12px;color:var(--text-dim)">${p.last_line}</div>` : ''}
+    </div>
+  `;
+
+  // Focus mini list
+  const list = document.getElementById('focus-mini-list');
+  list.innerHTML = arr.map(a => {
+    const c = STATE_COLOR[a.state] || STATE_COLOR.idle;
+    return `<div class="focus-mini-agent ${a.pane_id === selectedId ? 'active' : ''}" onclick="selectAgent('${a.pane_id}')">
+      <span class="fma-dot" style="background:${c}"></span>
+      <span class="fma-name">${a.window_name}</span>
+      <span class="fma-badge bg-${a.state}">${STATE_LABEL[a.state]}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderStats(arr) {
+  const c = { waiting:0, working:0, permission:0, sub_permission:0 };
+  arr.forEach(p => { if (c[p.state] !== undefined) c[p.state]++; });
+  document.getElementById('gs-waiting').textContent = `${c.waiting} waiting`;
+  document.getElementById('gs-working').textContent = `${c.working} working`;
+  document.getElementById('gs-perm').textContent    = `${c.permission + c.sub_permission} pending`;
+}
+
+function renderStatusBar(arr) {
+  document.getElementById('sb-count').textContent = `${arr.length} agents`;
+  const s = arr.filter(p => p.state !== 'idle' && p.state !== 'not_started');
+  const parts = ['waiting','permission','working','done','error']
+    .filter(st => s.some(p => p.state === st))
+    .map(st => `<span style="color:${STATE_COLOR[st]}">${s.filter(p=>p.state===st).length} ${st}</span>`)
+    .join(' · ');
+  document.getElementById('sb-summary').innerHTML = parts + (parts ? ' &nbsp;' : '');
+}
+
+function renderSidebarBadge(arr) {
+  const red = arr.filter(p => p.state === 'waiting' || p.state === 'permission' || p.state === 'sub_permission');
+  const badge = document.getElementById('sb-red-count');
+  if (red.length > 0) {
+    badge.textContent = red.length;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ── Actions ────────────────────────────────────────────────────────────
+function selectAgent(id) {
+  selectedId = id;
+  if (voiceOn) voiceTarget = id;
+  render();
+}
+window.selectAgent = selectAgent;
+
+window.approvePane = id => {
+  if (panes[id]) { panes[id].state = 'working'; panes[id].current_tool = null; render(); showToast('✓ Approved', 'var(--working)'); }
+};
+window.rejectPane = id => {
+  if (panes[id]) { panes[id].state = 'waiting'; render(); showToast('✗ Rejected', 'var(--waiting)'); }
+};
+
+function jumpToRed() {
+  const arr = panesArray(panes);
+  const red = arr.find(p => p.state === 'waiting' || p.state === 'permission' || p.state === 'sub_permission');
+  if (red) { selectAgent(red.pane_id); showToast('⚡ jumped to ' + red.window_name, 'var(--waiting)'); }
+}
+window.jumpToRed = jumpToRed;
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  const btn = document.getElementById('btn-voice');
+  btn.classList.toggle('active', voiceOn);
+  document.getElementById('sb-voice').classList.toggle('active', voiceOn);
+  if (voiceOn) voiceTarget = selectedId;
+  showToast(voiceOn ? '🎙 voice on' : '🎙 voice off');
+}
+
+window.toggleVoice = toggleVoice;
+
+window.switchView = function(name) {
+  currentView = name;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(name + '-view').classList.add('active');
+  ['fleet','focus'].forEach(n => document.getElementById('sb-' + n)?.classList.toggle('active', n === name));
+  document.getElementById('btn-focus').classList.toggle('active', name === 'focus');
+  if (name === 'focus') renderFocus(panesArray(panes));
+};
+
+window.setLayout = function(l) {
+  const grid = document.getElementById('fleet-grid');
+  grid.className = l === 'auto' ? 'layout-auto' : 'layout-' + l + 'col';
+  document.querySelectorAll('.layout-btn').forEach(b => {
+    const btnVal = b.getAttribute('onclick').match(/setLayout\('([^']+)'\)/)?.[1];
+    b.classList.toggle('active', btnVal === l);
+  });
+};
+
+// ── Toast ─────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, color) {
+  const el = document.getElementById('action-toast');
+  el.textContent = msg;
+  el.style.color = color || 'var(--text)';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const arr = panesArray(panes);
+  const idx = arr.findIndex(p => p.pane_id === selectedId);
+  if (e.key === 'ArrowRight') selectAgent(arr[(idx+1)%arr.length].pane_id);
+  if (e.key === 'ArrowLeft')  selectAgent(arr[(idx-1+arr.length)%arr.length].pane_id);
+  if (e.key === 'j' || e.key === 'J') jumpToRed();
+  if (e.key === 'f' || e.key === 'F') window.switchView(currentView === 'focus' ? 'fleet' : 'focus');
+  if (e.key === 'g' || e.key === 'G') window.toggleGesture();
+  if (e.key === 'v' || e.key === 'V') toggleVoice();
+  if (e.key === 'Escape') window.switchView('fleet');
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    const p = panes[selectedId];
+    if (p && (p.state === 'permission' || p.state === 'sub_permission')) window.approvePane(selectedId);
+  }
+});
+
+// ── Gesture ───────────────────────────────────────────────────────────
+window.toggleGesture = async function() {
+  gestureOn = !gestureOn;
+  document.getElementById('btn-gesture').classList.toggle('active', gestureOn);
+  document.getElementById('sb-cam').classList.toggle('active', gestureOn);
+  document.getElementById('gesture-overlay').classList.toggle('active', gestureOn);
+  if (gestureOn && !stream) await startGestureCamera();
+  if (!gestureOn) document.getElementById('gesture-hud').classList.remove('visible');
+};
+
+async function startGestureCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: {ideal:640}, height: {ideal:360}, facingMode: 'user' }
+    });
+    const vid = document.getElementById('gesture-video');
+    vid.srcObject = stream;
+    await vid.play();
+    await initGestureEngine();
+    requestAnimationFrame(gestureLoop);
+  } catch(e) {
+    console.warn('Camera not available:', e);
+    gestureOn = false;
+    document.getElementById('btn-gesture').classList.remove('active');
+  }
+}
+
+async function initGestureEngine() {
+  let HandLandmarker, FilesetResolver;
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm');
+    HandLandmarker = mod.HandLandmarker; FilesetResolver = mod.FilesetResolver;
+  } catch(e) { return; }
+  const fs = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
+  handLandmarker = await HandLandmarker.createFromOptions(fs, {
+    baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' },
+    runningMode: 'VIDEO', numHands: 2,
+    minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5
+  });
+  engine = new GestureEngine({ gestureConfirmFrames: 3, swipeVelocityThreshold: 0.022, smoothingFactor: 0.7 });
+  renderer = new GestureRenderer(document.getElementById('gesture-canvas'), {
+    mirror: true, background: 'video',
+    showSkeleton: true, showLandmarks: true, showLabels: true, showTrails: true,
+    showPinchCircle: true, showCursor: true, showMesh: false,
+    handColors: {
+      Left:  { primary: '#a78bfa', secondary: '#6c5ce7', glow: 'rgba(167,139,250,0.4)', mesh: 'rgba(167,139,250,0.06)' },
+      Right: { primary: '#00d2ff', secondary: '#0088aa', glow: 'rgba(0,210,255,0.4)',   mesh: 'rgba(0,210,255,0.06)' }
+    }
+  });
+
+  engine.on('frame', ({ hand, gesture }) => {
+    const nameEl = document.getElementById(hand === 'Right' ? 'ghud-right' : 'ghud-left');
+    const confEl = document.getElementById(hand === 'Right' ? 'ghud-rc' : 'ghud-lc');
+    if (nameEl) nameEl.textContent = gesture?.name || '—';
+    if (confEl) { const c = (gesture?.confidence||0)*100; confEl.style.width = c + '%'; }
+    document.getElementById('gesture-hud').classList.add('visible');
+  });
+
+  engine.on('gestureStart', ({ hand, gesture }) => {
+    const g = gesture?.name;
+    const arr = panesArray(panes);
+    const idx = arr.findIndex(p => p.pane_id === selectedId);
+    if (hand === 'Right') {
+      if (g === 'SWIPE_RIGHT') { selectAgent(arr[(idx+1)%arr.length].pane_id); showToast('→ next agent', 'var(--cyan)'); }
+      if (g === 'SWIPE_LEFT')  { selectAgent(arr[(idx-1+arr.length)%arr.length].pane_id); showToast('← prev agent', 'var(--cyan)'); }
+    }
+    if (hand === 'Left') {
+      if (g === 'POINT')       { toggleVoice(); showToast('🎙 voice toggle', '#a78bfa'); }
+      if (g === 'THREE')       { jumpToRed(); }
+      if (g === 'THUMBS_UP')   { const p = panes[selectedId]; if (p && p.state === 'permission') window.approvePane(selectedId); showToast('✓ approve', 'var(--working)'); }
+      if (g === 'THUMBS_DOWN') { showToast('✗ reject', 'var(--waiting)'); }
+    }
+  });
+}
+
+function gestureLoop() {
+  if (!gestureOn) return;
+  requestAnimationFrame(gestureLoop);
+  const vid = document.getElementById('gesture-video');
+  if (!handLandmarker || vid.paused || vid.currentTime === lastVT) return;
+  lastVT = vid.currentTime;
+  const gc = document.getElementById('gesture-canvas');
+  gc.width = vid.videoWidth || vid.clientWidth;
+  gc.height = vid.videoHeight || vid.clientHeight;
+  const results = handLandmarker.detectForVideo(vid, performance.now());
+  const handsData = {
+    multiHandLandmarks: results.landmarks || [],
+    multiHandedness: results.handedness?.map(h => ({ label: h[0]?.categoryName || 'Right' })) || []
+  };
+  engine.update(handsData);
+  const E = 0.12;
+  const remapped = { ...handsData, multiHandLandmarks: handsData.multiHandLandmarks.map(lms =>
+    lms.map(lm => ({ ...lm, x:(lm.x+E)/(1+E*2), y:(lm.y+E)/(1+E*2) }))
+  )};
+  renderer.draw(remapped, engine);
+}
+
+// ── Data source ────────────────────────────────────────────────────────
+const src = await initDataSource(panes, (updated) => {
+  panes = updated;
+  render();
+});
+document.getElementById('sb-source').textContent = src === 'tauri' ? '● tauri live' : '● mock data';
+document.getElementById('sb-source').className = src === 'tauri' ? 'src-tauri' : 'src-mock';
+
+// Init
+render();
+</script>
+</body>
+</html>

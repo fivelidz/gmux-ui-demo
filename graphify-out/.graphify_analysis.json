@@ -1,0 +1,221 @@
+{
+  "communities": {
+    "0": [
+      "research_ui_design_backdrop_filter_requirement",
+      "research_ui_design_blur_amount_reference",
+      "research_ui_design_border_trick",
+      "research_ui_design_css_glassmorphism",
+      "research_ui_design_glass_design_tokens",
+      "research_ui_design_gmux_rgba_values",
+      "research_ui_design_premium_glass_formula",
+      "research_ui_design_saturation_trick",
+      "research_ui_design_will_change_caveat"
+    ],
+    "1": [
+      "research_ui_design_edge_zone_indicator_css",
+      "research_ui_design_extended_gesture_engine",
+      "research_ui_design_extended_to_screen_fn",
+      "research_ui_design_extended_tracker_class",
+      "research_ui_design_hand_opacity_fade",
+      "research_ui_design_pip_camera_css",
+      "research_ui_design_virtual_canvas_extension",
+      "research_ui_design_wider_camera_crop"
+    ],
+    "2": [
+      "research_ui_design_density_calm_principles",
+      "research_ui_design_linear_approach",
+      "research_ui_design_raycast_command_item_css",
+      "research_ui_design_raycast_pattern",
+      "research_ui_design_status_badge_css",
+      "research_ui_design_vercel_data_row_css",
+      "research_ui_design_vercel_pattern"
+    ],
+    "3": [
+      "research_ui_design_agent_card_css",
+      "research_ui_design_agent_state_colours",
+      "research_ui_design_colour_system",
+      "research_ui_design_gmux_design_tokens",
+      "research_ui_design_motion_system",
+      "research_ui_design_typography_system",
+      "research_ui_design_working_pulse_animation"
+    ],
+    "4": [
+      "research_ui_design_iterm2_dimming",
+      "research_ui_design_pane_dimming_css",
+      "research_ui_design_pane_divider_css",
+      "research_ui_design_pane_management_principles",
+      "research_ui_design_warp_terminal",
+      "research_ui_design_zellij"
+    ],
+    "5": [
+      "research_ui_design_electron_vs_tauri",
+      "research_ui_design_gmux_project",
+      "research_ui_design_macos_vibrancy_native",
+      "research_ui_design_tauri_macos_caveats",
+      "research_ui_design_tauri_v2_vibrancy",
+      "research_ui_design_tauri_window_config"
+    ],
+    "6": [
+      "research_ui_design_electron_css_transparency",
+      "research_ui_design_electron_vibrancy",
+      "research_ui_design_electron_vibrancy_types",
+      "research_ui_design_electron_windows_mica"
+    ],
+    "7": [
+      "research_ui_design_electron_webcam",
+      "research_ui_design_hand_tracking_edge_problem",
+      "research_ui_design_tauri_webcam_access"
+    ],
+    "8": [
+      "research_ui_design_powerline_segment_css",
+      "research_ui_design_tmux_powerline"
+    ],
+    "9": [
+      "research_ui_design_tauri_drag_region_css",
+      "research_ui_design_tauri_transparent_titlebar"
+    ]
+  },
+  "cohesion": {
+    "0": 0.31,
+    "1": 0.32,
+    "2": 0.33,
+    "3": 0.33,
+    "4": 0.33,
+    "5": 0.47,
+    "6": 0.5,
+    "7": 1.0,
+    "8": 1.0,
+    "9": 1.0
+  },
+  "gods": [
+    {
+      "id": "research_ui_design_css_glassmorphism",
+      "label": "CSS Glassmorphism \u2014 Premium vs Cheap",
+      "degree": 11
+    },
+    {
+      "id": "research_ui_design_gmux_project",
+      "label": "gmux Project \u2014 Gesture-First AI Agent Dashboard Terminal Multiplexer",
+      "degree": 9
+    },
+    {
+      "id": "research_ui_design_tauri_v2_vibrancy",
+      "label": "Tauri v2 Native Vibrancy \u2014 setVibrancy API hits NSVisualEffectView directly",
+      "degree": 7
+    },
+    {
+      "id": "research_ui_design_electron_vibrancy",
+      "label": "Electron vibrancy API \u2014 win.setVibrancy(type), NSVisualEffectView underneath",
+      "degree": 6
+    },
+    {
+      "id": "research_ui_design_agent_card_css",
+      "label": "gmux Agent Card CSS \u2014 glass panel, grid-template-rows: 28px 1fr 28px, state glow box-shadow",
+      "degree": 6
+    },
+    {
+      "id": "research_ui_design_gmux_design_tokens",
+      "label": "gmux Full Design Token System \u2014 colours, glass, typography, layout, motion in :root",
+      "degree": 6
+    },
+    {
+      "id": "research_ui_design_pane_management_principles",
+      "label": "Pane Management Design Principles \u2014 6 Rules for Terminal Multiplexer UIs",
+      "degree": 5
+    },
+    {
+      "id": "research_ui_design_extended_tracker_class",
+      "label": "ExtendedTracker Class \u2014 Velocity extrapolation for 12 frames, quadratic fade-out, history buffer of 16",
+      "degree": 5
+    },
+    {
+      "id": "research_ui_design_macos_vibrancy_native",
+      "label": "macOS Native Vibrancy (NSVisualEffectView)",
+      "degree": 4
+    },
+    {
+      "id": "research_ui_design_premium_glass_formula",
+      "label": "Premium Glass CSS Formula \u2014 backdrop-filter: blur(12px) saturate(180%) brightness(1.05)",
+      "degree": 4
+    }
+  ],
+  "surprises": [
+    {
+      "source": "Saturation Trick \u2014 saturate(180%) is the magic ingredient",
+      "target": "iTerm2 Pane Dimming \u2014 Inactive Panes at 70% Brightness (filter: brightness(0.75) saturate(0.8))",
+      "source_files": [
+        "RESEARCH_UI_DESIGN.md",
+        "RESEARCH_UI_DESIGN.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "note": "Bridges community 0 \u2192 community 4"
+    },
+    {
+      "source": "Tauri v2 macOS Caveats \u2014 transparent+vibrancy together, hasShadow, resize handles, focus state",
+      "target": "will-change: transform BREAKS backdrop-filter \u2014 creates new stacking context",
+      "source_files": [
+        "RESEARCH_UI_DESIGN.md",
+        "RESEARCH_UI_DESIGN.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "conceptually_related_to",
+      "note": "Bridges community 0 \u2192 community 5"
+    },
+    {
+      "source": "Raycast Dense+Calm Pattern \u2014 Monochrome + Single Accent, 4px Grid, Keyboard-First",
+      "target": "Warp Terminal \u2014 Block-Based Output, Input Always at Bottom",
+      "source_files": [
+        "RESEARCH_UI_DESIGN.md",
+        "RESEARCH_UI_DESIGN.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "note": "Bridges community 4 \u2192 community 2"
+    },
+    {
+      "source": "Pane Management Design Principles \u2014 6 Rules for Terminal Multiplexer UIs",
+      "target": "gmux Agent Card CSS \u2014 glass panel, grid-template-rows: 28px 1fr 28px, state glow box-shadow",
+      "source_files": [
+        "RESEARCH_UI_DESIGN.md",
+        "RESEARCH_UI_DESIGN.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "rationale_for",
+      "note": "Bridges community 4 \u2192 community 3"
+    },
+    {
+      "source": "gmux Project \u2014 Gesture-First AI Agent Dashboard Terminal Multiplexer",
+      "target": "Warp Terminal \u2014 Block-Based Output, Input Always at Bottom",
+      "source_files": [
+        "RESEARCH_UI_DESIGN.md",
+        "RESEARCH_UI_DESIGN.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "note": "Bridges community 5 \u2192 community 4"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `gmux Project \u2014 Gesture-First AI Agent Dashboard Terminal Multiplexer` connect `Community 5` to `Community 0`, `Community 1`, `Community 3`, `Community 4`, `Community 7`?",
+      "why": "High betweenness centrality (0.521) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `gmux Agent Card CSS \u2014 glass panel, grid-template-rows: 28px 1fr 28px, state glow box-shadow` connect `Community 3` to `Community 0`, `Community 2`, `Community 4`, `Community 5`?",
+      "why": "High betweenness centrality (0.269) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `CSS Glassmorphism \u2014 Premium vs Cheap` connect `Community 0` to `Community 5`, `Community 6`?",
+      "why": "High betweenness centrality (0.252) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `Glass Border Trick \u2014 1px light edge catch simulates light reflecting off glass`, `Blur Amount Reference \u2014 2-4px frosted, 8-12px menu bar, 16-20px spotlight, 30px+ iOS`, `gmux Dark Theme rgba Values \u2014 titlebar, agent cards, HUD, tooltip, modal backdrop` to the rest of the system?",
+      "why": "18 weakly-connected nodes found - possible documentation gaps or missing edges."
+    }
+  ]
+}

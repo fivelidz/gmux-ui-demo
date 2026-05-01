@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux · Projector Focus</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   SYSTEM C — PROJECTOR FOCUS
+   Design language: cinematic, one agent at a time, ultra-readable
+   at 3–5m distance. Large typography, bold state colour, minimal
+   chrome. Gesture-navigable from the couch/whiteboard.
+   Best for: TV, projector, shared screen, standing desk.
+═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:           #04060c;
+  --surface:      #070b14;
+  --card:         rgba(9,14,24,0.92);
+  --border:       rgba(255,255,255,0.08);
+  --border-hi:    rgba(255,255,255,0.15);
+  --muted:        #4a5a70;
+  --text:         #f0f4fa;
+  --text-dim:     #8090a8;
+
+  --waiting:      #f04444;
+  --working:      #22d364;
+  --permission:   #f87316;
+  --done:         #4090f4;
+  --error:        #f04444;
+  --idle:         #303d50;
+  --accent:       #7060f0;
+
+  --glass:        rgba(9,14,24,0.88);
+  --blur:         blur(24px) saturate(160%) brightness(1.04);
+
+  --font:   'SF Pro Display','SF Pro Text','Inter',system-ui,sans-serif;
+  --mono:   'SF Mono','Fira Code','Menlo',monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg); color: var(--text);
+  font-family: var(--font); overflow: hidden; user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Full-screen shell ── */
+#app {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px;
+  grid-template-rows: 1fr 80px;
+  height: 100vh; gap: 0;
+}
+
+/* ── Left nav strip: agent dots ── */
+#nav-strip {
+  grid-column: 1; grid-row: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; padding: 20px 0;
+  background: rgba(7,11,20,0.6);
+  border-right: 1px solid var(--border);
+}
+.nav-dot {
+  width: 48px; height: 48px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 180ms ease;
+  border: 2px solid transparent; position: relative;
+  background: rgba(255,255,255,0.03);
+}
+.nav-dot:hover  { border-color: var(--border-hi); background: rgba(255,255,255,0.06); }
+.nav-dot.active { border-color: var(--accent); background: rgba(112,96,240,0.12); }
+.nav-dot-inner  { width: 12px; height: 12px; border-radius: 50%; transition: all 200ms ease; }
+.nav-dot-num {
+  position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; font-weight: 700; color: var(--muted); font-family: var(--mono);
+}
+
+/* ── Main stage ── */
+#stage {
+  grid-column: 2; grid-row: 1;
+  display: flex; flex-direction: column;
+  padding: 40px 48px 32px;
+  overflow: hidden; position: relative;
+}
+
+/* Ambient state aura behind everything */
+#stage-aura {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  transition: opacity 600ms ease;
+}
+
+.stage-content { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 28px; flex: 1; }
+
+/* ── Hero header ── */
+.hero-header { display: flex; align-items: center; gap: 20px; }
+.hero-state-dot {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  transition: background 300ms ease, box-shadow 300ms ease;
+}
+.hero-name {
+  font-size: 48px; font-weight: 800; letter-spacing: -0.05em;
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1;
+}
+.hero-badge {
+  font-size: 16px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 8px 22px; border-radius: 9px; flex-shrink: 0;
+}
+.hero-win {
+  font-size: 20px; font-weight: 700; font-family: var(--mono);
+  color: var(--muted); background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px; flex-shrink: 0;
+}
+
+/* ── Permission buttons ── */
+.perm-row {
+  display: flex; gap: 16px;
+}
+.perm-btn-large {
+  flex: 1; max-width: 240px; padding: 18px 24px; border-radius: 12px;
+  font-family: var(--font); font-size: 18px; font-weight: 800;
+  cursor: pointer; border: none; transition: all 150ms ease;
+}
+.perm-btn-large.approve { background: rgba(34,211,100,.18); color: var(--working); border: 2px solid rgba(34,211,100,.4); }
+.perm-btn-large.reject  { background: rgba(240,68,68,.14);  color: var(--waiting);  border: 2px solid rgba(240,68,68,.3); }
+.perm-btn-large:active { transform: scale(0.97); }
+
+/* ── Metrics grid ── */
+.metrics-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+}
+.metric-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-top: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px; padding: 16px 20px;
+  transition: border-color 200ms ease;
+}
+.mc-label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+.mc-value { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; line-height: 1; }
+.mc-value.hot { color: var(--waiting); }
+.mc-sub   { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
+
+/* ── RAM/CPU bars ── */
+.bar-metric { }
+.bm-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.bm-value { font-size: 24px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.bm-track { height: 6px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.bm-fill  { height: 100%; border-radius: 3px; transition: width 500ms ease; }
+
+/* ── Progress bar ── */
+.hero-progress { }
+.hp-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+.hp-label  { font-size: 14px; font-weight: 600; color: var(--text-dim); letter-spacing: 0.03em; text-transform: uppercase; }
+.hp-count  { font-size: 28px; font-weight: 800; color: var(--text); }
+.hp-total  { font-size: 18px; font-weight: 500; color: var(--text-dim); }
+.hp-track  { height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; }
+.hp-fill   { height: 100%; border-radius: 4px; transition: width 600ms cubic-bezier(0.4,0,0.2,1); }
+
+/* ── Last line ── */
+.hero-last-line {
+  font-family: var(--mono); font-size: 16px; line-height: 1.6;
+  color: var(--text-dim); padding: 16px 20px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hero-last-line.working { color: var(--working); border-color: rgba(34,211,100,0.2); }
+.hero-last-line.error   { color: var(--waiting); border-color: rgba(240,68,68,0.25); }
+
+/* ── Tool timeline ── */
+.hero-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ht-chip {
+  font-size: 13px; font-weight: 700; font-family: var(--mono);
+  padding: 5px 14px; border-radius: 6px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text-dim);
+}
+.ht-chip.latest { background: rgba(112,96,240,.15); border-color: rgba(112,96,240,.35); color: #a090ff; }
+.ht-arrow { color: var(--muted); font-size: 14px; }
+
+/* ── Right info strip ── */
+#info-strip {
+  grid-column: 3; grid-row: 1;
+  display: flex; flex-direction: column;
+  align-items: center; padding: 20px 8px; gap: 16px;
+  background: rgba(7,11,20,0.6);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+.is-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.is-value { font-size: 13px; font-weight: 700; font-family: var(--mono); color: var(--text); text-align: center; }
+.is-sep   { width: 32px; height: 1px; background: var(--border); }
+
+/* ── Bottom bar ── */
+#bottom-bar {
+  grid-column: 1 / -1; grid-row: 2;
+  display: flex; align-items: center;
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+/* Mini fleet strip */
+#mini-fleet {
+  display: flex; gap: 0; flex: 1; overflow-x: auto; scrollbar-width: none;
+  height: 100%;
+}
+#mini-fleet::-webkit-scrollbar { display: none; }
+.mini-card {
+  display: flex; align-items: center; gap: 8px;
+  height: 80px; padding: 0 20px; cursor: pointer;
+  border-right: 1px solid var(--border);
+  transition: background 120ms ease; flex-shrink: 0; min-width: 120px;
+  position: relative;
+}
+.mini-card:hover  { background: rgba(255,255,255,0.04); }
+.mini-card.active { background: rgba(112,96,240,.08); }
+.mini-card.active::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--accent);
+}
+.mc-dot-lg { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.mc-name   { font-size: 14px; font-weight: 700; }
+.mc-state  { font-size: 11px; color: var(--text-dim); }
+
+/* Gesture hints in bottom bar */
+#gesture-hints {
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 28px; flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  font-size: 13px; color: var(--text-dim);
+}
+.gh-item { display: flex; align-items: center; gap: 8px; }
+.gh-glyph { font-size: 20px; }
+
+/* ── Action flash (large, center screen) ── */
+#action-flash {
+  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(10px);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border-hi);
+  border-radius: 14px; padding: 16px 40px;
+  font-size: 24px; font-weight: 800; letter-spacing: -0.02em;
+  opacity: 0; transition: opacity 200ms ease, transform 200ms ease;
+  pointer-events: none; white-space: nowrap; z-index: 200;
+}
+#action-flash.show {
+  opacity: 1; transform: translateX(-50%) translateY(0);
+}
+
+/* ── Gesture PiP (bottom right, small) ── */
+#gesture-pip {
+  position: fixed; bottom: 80px; right: 0;
+  width: 200px; height: 113px;
+  display: none; overflow: hidden;
+  border-radius: 10px 0 0 0;
+  border-top: 1px solid var(--border); border-left: 1px solid var(--border);
+}
+#gesture-pip.active { display: block; }
+#pip-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.45; }
+#pip-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Gesture HUD ── */
+#gesture-hud {
+  position: fixed; bottom: 96px; left: 92px;
+  display: flex; flex-direction: column; gap: 5px;
+  opacity: 0; transition: opacity 250ms; pointer-events: none; z-index: 100;
+}
+#gesture-hud.visible { opacity: 1; }
+.ghud-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--glass); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border-hi); border-radius: 9px;
+  padding: 8px 14px; min-width: 200px;
+}
+.ghud-role  { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; width: 32px; }
+.ghud-role.right { color: var(--done); }
+.ghud-role.left  { color: var(--accent); }
+.ghud-gesture { flex: 1; font-size: 14px; font-weight: 700; }
+.ghud-conf    { width: 52px; height: 4px; background: rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
+.ghud-bar     { height: 100%; border-radius:2px; transition: width 80ms; }
+
+/* State badge colours */
+.bg-waiting    { background:rgba(240,68,68,.14);  color:var(--waiting); }
+.bg-working    { background:rgba(34,211,100,.13); color:var(--working); }
+.bg-permission { background:rgba(248,115,22,.16); color:var(--permission); }
+.bg-done       { background:rgba(64,144,244,.13); color:var(--done); }
+.bg-error      { background:rgba(240,68,68,.16);  color:var(--error); }
+.bg-idle       { background:rgba(48,61,80,.2);    color:var(--muted); }
+.bg-sub_permission { background:rgba(248,115,22,.14); color:var(--permission); }
+
+@keyframes working-dot { 0%,100%{box-shadow:0 0 0 0 rgba(34,211,100,.6)} 50%{box-shadow:0 0 0 5px rgba(34,211,100,0)} }
+@keyframes perm-glow   { 0%,100%{box-shadow:0 0 20px rgba(248,115,22,.1)} 50%{box-shadow:0 0 40px rgba(248,115,22,.25)} }
+</style>
+</head>
+<body>
+
+<div id="gesture-pip">
+  <video id="pip-video" autoplay playsinline muted></video>
+  <canvas id="pip-canvas"></canvas>
+</div>
+<div id="gesture-hud">
+  <div class="ghud-row">
+    <span class="ghud-role right">R</span>
+    <span class="ghud-gesture" id="ghud-right">—</span>
+    <div class="ghud-conf"><div class="ghud-bar" id="ghud-rc" style="width:0;background:var(--done)"></div></div>
+  </div>
+  <div class="ghud-row">
+    <span class="ghud-role left">L</span>
+    <span class="ghud-gesture" id="ghud-left">—</span>
+    <div class="ghud-conf"><div class="ghud-bar" id="ghud-lc" style="width:0;background:var(--accent)"></div></div>
+  </div>
+</div>
+<div id="action-flash"></div>
+
+<div id="app">
+
+  <!-- Left nav strip -->
+  <div id="nav-strip"></div>
+
+  <!-- Main stage -->
+  <div id="stage">
+    <div id="stage-aura"></div>
+    <div class="stage-content" id="stage-content"></div>
+  </div>
+
+  <!-- Right info strip -->
+  <div id="info-strip">
+    <div class="is-label">Session</div>
+    <div class="is-value" id="is-session">gmux</div>
+    <div class="is-sep"></div>
+    <div class="is-label">Agents</div>
+    <div class="is-value" id="is-agents">—</div>
+    <div class="is-sep"></div>
+    <div class="is-label">Waiting</div>
+    <div class="is-value" id="is-waiting" style="color:var(--waiting)">—</div>
+    <div class="is-sep"></div>
+    <div class="is-label">Working</div>
+    <div class="is-value" id="is-working" style="color:var(--working)">—</div>
+    <div class="is-sep"></div>
+    <div class="is-label">Pending</div>
+    <div class="is-value" id="is-perm" style="color:var(--permission)">—</div>
+    <div class="is-sep"></div>
+    <button onclick="toggleGesture()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:6px;cursor:pointer;color:var(--muted);font-size:18px;transition:all 120ms" id="btn-gesture">✋</button>
+    <button onclick="toggleVoice()"   style="background:none;border:1px solid var(--border);border-radius:7px;padding:6px;cursor:pointer;color:var(--muted);font-size:18px;transition:all 120ms" id="btn-voice">🎙</button>
+  </div>
+
+  <!-- Bottom bar: mini fleet + gesture hints -->
+  <div id="bottom-bar">
+    <div id="mini-fleet"></div>
+    <div id="gesture-hints">
+      <div class="gh-item"><span class="gh-glyph">→</span><span>next</span></div>
+      <div class="gh-item"><span class="gh-glyph">⚡</span><span>jump</span></div>
+      <div class="gh-item"><span class="gh-glyph">☝</span><span>voice</span></div>
+      <div class="gh-item"><span class="gh-glyph">👍</span><span>approve</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import { MOCK_PANES, STATE_COLOR, STATE_LABEL, panesArray, fmtRam, fmtTokens, fmtUptime, ramPct, initDataSource } from '../../shared/mock-data.js';
+import { GestureEngine }   from '../../shared/gesture-engine.js';
+import { GestureRenderer } from '../../shared/gesture-renderer.js';
+
+let panes      = JSON.parse(JSON.stringify(MOCK_PANES));
+let selectedId = '%2'; // default: waiting agent
+let gestureOn  = false;
+let voiceOn    = false;
+let engine, renderer, stream, handLandmarker, lastVT = -1;
+
+// ── Render ─────────────────────────────────────────────────────────────
+function render() {
+  const arr = panesArray(panes);
+  renderNavStrip(arr);
+  renderStage(panes[selectedId] || arr[0]);
+  renderMiniFleet(arr);
+  renderInfoStrip(arr);
+}
+
+function renderNavStrip(arr) {
+  const strip = document.getElementById('nav-strip');
+  strip.innerHTML = arr.map(p => {
+    const col = STATE_COLOR[p.state] || STATE_COLOR.idle;
+    const dotStyle = p.state === 'working' ? 'animation:working-dot 1.4s ease-in-out infinite' : '';
+    return `<div class="nav-dot ${p.pane_id===selectedId?'active':''}" onclick="select('${p.pane_id}')">
+      <div class="nav-dot-inner" style="background:${col};${dotStyle}"></div>
+      <span class="nav-dot-num">${p.window_index}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderStage(p) {
+  if (!p) return;
+  const col   = STATE_COLOR[p.state] || STATE_COLOR.idle;
+  const rPct  = ramPct(p.ram_mb || 0);
+  const cPct  = p.cpu_pct || 0;
+  const done  = p.todo_done, total = p.todo_total;
+  const pct   = total > 0 ? (done / total * 100).toFixed(0) : 0;
+  const rCol  = rPct > 80 ? 'var(--waiting)' : rPct > 60 ? 'var(--permission)' : 'var(--done)';
+  const cCol  = cPct > 80 ? 'var(--waiting)' : cPct > 60 ? 'var(--permission)' : 'var(--working)';
+  const tools = p.tool_history || [];
+
+  // Update aura
+  const aura = document.getElementById('stage-aura');
+  const auraAlpha = p.state === 'idle' ? 0 : p.state === 'permission' ? 0.06 : 0.04;
+  aura.style.background = `radial-gradient(ellipse at 40% 30%, ${col}${Math.round(auraAlpha*255).toString(16).padStart(2,'0')} 0%, transparent 65%)`;
+
+  const permRow = (p.state === 'permission' || p.state === 'sub_permission') ? `
+    <div class="perm-row">
+      <button class="perm-btn-large approve" onclick="approvePerm('${p.pane_id}')">✓ Approve</button>
+      <button class="perm-btn-large reject"  onclick="rejectPerm('${p.pane_id}')">✗ Reject</button>
+    </div>` : '';
+
+  const toolsHtml = tools.length ? `
+    <div class="hero-tools">
+      ${tools.map((t,i) =>
+        `<span class="ht-chip ${i===tools.length-1?'latest':''}">${t}</span>
+         ${i<tools.length-1?'<span class="ht-arrow">›</span>':''}`
+      ).join('')}
+    </div>` : '';
+
+  document.getElementById('stage-content').innerHTML = `
+    <div class="hero-header">
+      <span class="hero-state-dot" style="background:${col};${p.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></span>
+      <span class="hero-name">${p.window_name}</span>
+      <span class="hero-win">${p.window_index}</span>
+      <span class="hero-badge bg-${p.state}">${STATE_LABEL[p.state]}</span>
+    </div>
+    ${permRow}
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="mc-label">RAM</div>
+        <div class="mc-value ${rPct>70?'hot':''}">${fmtRam(p.ram_mb)}</div>
+        <div class="mc-sub">${rPct}% used</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">CPU</div>
+        <div class="mc-value ${cPct>70?'hot':''}">${cPct}<span style="font-size:16px;font-weight:500;color:var(--text-dim)">%</span></div>
+        <div class="mc-sub">process</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">Tokens ↑</div>
+        <div class="mc-value">${fmtTokens(p.token_in)}</div>
+        <div class="mc-sub">input</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">Tokens ↓</div>
+        <div class="mc-value">${fmtTokens(p.token_out)}</div>
+        <div class="mc-sub">output</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">Uptime</div>
+        <div class="mc-value" style="font-size:22px">${fmtUptime(p.uptime_s)}</div>
+        <div class="mc-sub">${p.model||'—'}</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">Todos</div>
+        <div class="mc-value">${done}<span style="font-size:16px;font-weight:400;color:var(--text-dim)"> /${total}</span></div>
+        <div class="mc-sub">${pct}% done</div>
+      </div>
+    </div>
+    ${total > 0 ? `
+    <div class="hero-progress">
+      <div class="hp-header">
+        <span class="hp-label">Progress</span>
+        <span><span class="hp-count">${done}</span><span class="hp-total"> / ${total}</span></span>
+      </div>
+      <div class="hp-track"><div class="hp-fill" style="width:${pct}%;background:${p.state==='working'?'var(--working)':'var(--accent)'}"></div></div>
+    </div>` : ''}
+    ${toolsHtml}
+    ${p.last_line ? `<div class="hero-last-line ${p.state==='error'?'error':p.state==='working'?'working':''}">${p.last_line}</div>` : ''}
+  `;
+}
+
+function renderMiniFleet(arr) {
+  document.getElementById('mini-fleet').innerHTML = arr
+    .filter(p => p.pane_id !== selectedId)
+    .map(p => {
+      const col = STATE_COLOR[p.state] || STATE_COLOR.idle;
+      const dot = p.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':'';
+      return `<div class="mini-card ${p.pane_id===selectedId?'active':''}" onclick="select('${p.pane_id}')">
+        <span class="mc-dot-lg" style="background:${col};${dot}"></span>
+        <div>
+          <div class="mc-name">${p.window_name}</div>
+          <div class="mc-state">${STATE_LABEL[p.state]}</div>
+        </div>
+      </div>`;
+    }).join('');
+}
+
+function renderInfoStrip(arr) {
+  const c = { waiting:0, working:0, permission:0, sub_permission:0 };
+  arr.forEach(p => { if(c[p.state]!==undefined) c[p.state]++; });
+  document.getElementById('is-agents').textContent  = arr.length;
+  document.getElementById('is-waiting').textContent = c.waiting;
+  document.getElementById('is-working').textContent = c.working;
+  document.getElementById('is-perm').textContent    = c.permission + c.sub_permission;
+}
+
+// ── Controls ───────────────────────────────────────────────────────────
+function select(id) { selectedId = id; render(); }
+window.select = select;
+
+window.approvePerm = id => { if(panes[id]){panes[id].state='working';panes[id].current_tool=null;render();flash('✓ Approved','var(--working)');} };
+window.rejectPerm  = id => { if(panes[id]){panes[id].state='waiting';render();flash('✗ Rejected','var(--waiting)');} };
+
+function jumpToRed() {
+  const arr = panesArray(panes);
+  const red = arr.find(p => p.state==='waiting'||p.state==='permission'||p.state==='sub_permission');
+  if (red) { select(red.pane_id); flash('⚡ ' + red.window_name, 'var(--waiting)'); }
+}
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  const btn = document.getElementById('btn-voice');
+  btn.style.color  = voiceOn ? 'var(--waiting)' : 'var(--muted)';
+  btn.style.borderColor = voiceOn ? 'rgba(240,68,68,.4)' : '';
+  flash(voiceOn ? '🎙 Voice on' : '🎙 Voice off');
+}
+window.toggleVoice = toggleVoice;
+
+let flashTimer;
+function flash(msg, color) {
+  const el = document.getElementById('action-flash');
+  el.textContent = msg; el.style.color = color || 'var(--text)';
+  el.classList.add('show');
+  clearTimeout(flashTimer); flashTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ── Keyboard ───────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const arr = panesArray(panes);
+  const idx = arr.findIndex(p => p.pane_id === selectedId);
+  if (e.key==='ArrowRight'||e.key==='ArrowDown')  { select(arr[(idx+1)%arr.length].pane_id); flash('→ next'); }
+  if (e.key==='ArrowLeft' ||e.key==='ArrowUp')    { select(arr[(idx-1+arr.length)%arr.length].pane_id); flash('← prev'); }
+  if (e.key==='j'||e.key==='J') jumpToRed();
+  if (e.key==='v'||e.key==='V') toggleVoice();
+  if (e.key==='g'||e.key==='G') window.toggleGesture();
+  if (e.key==='Enter'||e.key===' ') {
+    e.preventDefault();
+    const p=panes[selectedId]; if(p&&(p.state==='permission'||p.state==='sub_permission')) window.approvePerm(selectedId);
+  }
+});
+
+// ── Gesture ────────────────────────────────────────────────────────────
+window.toggleGesture = async function() {
+  gestureOn = !gestureOn;
+  const btn = document.getElementById('btn-gesture');
+  btn.style.color = gestureOn ? 'var(--accent)' : 'var(--muted)';
+  btn.style.borderColor = gestureOn ? 'rgba(112,96,240,.4)' : '';
+  document.getElementById('gesture-pip').classList.toggle('active', gestureOn);
+  if (gestureOn && !stream) await startCamera();
+  if (!gestureOn) document.getElementById('gesture-hud').classList.remove('visible');
+};
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:360},facingMode:'user'}});
+    const vid = document.getElementById('pip-video');
+    vid.srcObject = stream; await vid.play();
+    await initEngine(); requestAnimationFrame(gLoop);
+  } catch(e) { console.warn('Camera:', e); gestureOn=false; document.getElementById('gesture-pip').classList.remove('active'); }
+}
+
+async function initEngine() {
+  let HandLandmarker, FilesetResolver;
+  try { const mod=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm'); HandLandmarker=mod.HandLandmarker; FilesetResolver=mod.FilesetResolver; } catch(e){return;}
+  const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
+  handLandmarker=await HandLandmarker.createFromOptions(fs,{
+    baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},
+    runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:0.5,minHandPresenceConfidence:0.5,minTrackingConfidence:0.5
+  });
+  engine=new GestureEngine({gestureConfirmFrames:3,swipeVelocityThreshold:0.020,smoothingFactor:0.7});
+  renderer=new GestureRenderer(document.getElementById('pip-canvas'),{
+    mirror:true,background:'video',showSkeleton:true,showLandmarks:true,showLabels:true,showTrails:true,showPinchCircle:true,showCursor:true,showMesh:false,
+    handColors:{Left:{primary:'#a090ff',secondary:'#7060f0',glow:'rgba(160,144,255,0.4)',mesh:'rgba(160,144,255,0.06)'},Right:{primary:'#4090f4',secondary:'#0060c0',glow:'rgba(64,144,244,0.4)',mesh:'rgba(64,144,244,0.06)'}}
+  });
+  engine.on('frame',({hand,gesture})=>{
+    const ne=document.getElementById(hand==='Right'?'ghud-right':'ghud-left');
+    const ce=document.getElementById(hand==='Right'?'ghud-rc':'ghud-lc');
+    if(ne) ne.textContent=gesture?.name||'—';
+    if(ce){const c=(gesture?.confidence||0)*100;ce.style.width=c+'%';}
+    document.getElementById('gesture-hud').classList.add('visible');
+  });
+  engine.on('gestureStart',({hand,gesture})=>{
+    const g=gesture?.name;
+    const arr=panesArray(panes);
+    const idx=arr.findIndex(p=>p.pane_id===selectedId);
+    if(hand==='Right'){
+      if(g==='SWIPE_RIGHT'){select(arr[(idx+1)%arr.length].pane_id);flash('→ next agent','var(--done)');}
+      if(g==='SWIPE_LEFT') {select(arr[(idx-1+arr.length)%arr.length].pane_id);flash('← prev agent','var(--done)');}
+    }
+    if(hand==='Left'){
+      if(g==='POINT')      {toggleVoice();}
+      if(g==='THREE')      {jumpToRed();}
+      if(g==='THUMBS_UP')  {const p=panes[selectedId];if(p&&(p.state==='permission'||p.state==='sub_permission'))window.approvePerm(selectedId);}
+      if(g==='THUMBS_DOWN'){window.rejectPerm(selectedId);}
+    }
+  });
+}
+
+function gLoop(){
+  if(!gestureOn) return;
+  requestAnimationFrame(gLoop);
+  const vid=document.getElementById('pip-video');
+  if(!handLandmarker||vid.paused||vid.currentTime===lastVT) return;
+  lastVT=vid.currentTime;
+  const gc=document.getElementById('pip-canvas');
+  gc.width=vid.videoWidth||vid.clientWidth;gc.height=vid.videoHeight||vid.clientHeight;
+  const results=handLandmarker.detectForVideo(vid,performance.now());
+  const hd={multiHandLandmarks:results.landmarks||[],multiHandedness:results.handedness?.map(h=>({label:h[0]?.categoryName||'Right'}))||[]};
+  engine.update(hd);
+  const E=0.12;
+  renderer.draw({...hd,multiHandLandmarks:hd.multiHandLandmarks.map(lms=>lms.map(lm=>({...lm,x:(lm.x+E)/(1+E*2),y:(lm.y+E)/(1+E*2)})))},engine);
+}
+
+// ── Data source ────────────────────────────────────────────────────────
+await initDataSource(panes, (updated) => { panes = updated; render(); });
+render();
+</script>
+</body>
+</html>

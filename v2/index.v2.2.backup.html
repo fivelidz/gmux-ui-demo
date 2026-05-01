@@ -1,0 +1,1877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux v2.2</title>
+<style>
+/* gmux v2.2 — New features over v2.1:
+   - Pane default view: todo checklist + activity
+   - Hardware info on Tab key (secondary overlay)
+   - Pane fullscreen on Enter / double-click header
+   - Session switcher (multiple tmux sessions)
+   - Folder graph panel
+   - New agent modal (qalcode2 / claude code / terminal)
+   - RAM sort badge on panes
+   - Theme presets in options (6 palettes)
+   - Real /tmp/gmux-pane-state.json integration
+   - api_port shown as live service indicator
+   - children processes listed in hardware tab
+*/
+
+:root {
+  --bg:         #111827;
+  --surface:    #1a2332;
+  --surface2:   #243044;
+  --card:       #1e2d42;
+  --card-hi:    #253452;
+  --border:     rgba(255,255,255,0.09);
+  --border-hi:  rgba(255,255,255,0.18);
+  --muted:      #6b7fa0;
+  --text:       #e2e8f5;
+  --text-dim:   #94a3b8;
+  --text-bright:#f0f4fc;
+  --accent:     #818cf8;
+  --waiting:    #f87171;
+  --working:    #34d399;
+  --permission: #fb923c;
+  --done:       #60a5fa;
+  --error:      #f87171;
+  --idle:       #475569;
+  --font:  -apple-system,'Inter','Segoe UI',system-ui,sans-serif;
+  --mono:  'SF Mono','Fira Code',ui-monospace,monospace;
+  --topbar-h:   48px;
+  --tabs-h:     38px;
+  --sb-h:       28px;
+  --sidebar-w:  220px;
+  --cam-w:      288px;
+  --chat-w:     400px;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
+  font-family:var(--font);font-size:14px;line-height:1.5;
+  overflow:hidden;-webkit-font-smoothing:antialiased;}
+
+/* ── App ── */
+#app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* ── Topbar ── */
+#topbar{
+  display:flex;align-items:center;padding:0 14px;gap:8px;
+  height:var(--topbar-h);flex-shrink:0;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  -webkit-app-region:drag;
+}
+.tl{width:72px;flex-shrink:0;}
+.brand{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;
+  letter-spacing:-.02em;padding-right:14px;border-right:1px solid var(--border);
+  flex-shrink:0;-webkit-app-region:no-drag;}
+.bdot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 10px var(--accent);animation:bdot 3s ease-in-out infinite;}
+@keyframes bdot{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.4)}}
+
+/* Session switcher pills */
+#session-tabs{display:flex;gap:4px;padding:4px;-webkit-app-region:no-drag;}
+.stab{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;
+  color:var(--text-dim);cursor:pointer;border:1px solid transparent;
+  transition:all 120ms;background:none;font-family:var(--font);
+}
+.stab:hover{color:var(--text);background:var(--surface2);}
+.stab.active{color:var(--text-bright);background:var(--card-hi);border-color:var(--border);}
+.stab-dot{width:7px;height:7px;border-radius:50%;}
+.stab-add{
+  padding:4px 10px;border-radius:6px;font-size:14px;font-weight:400;
+  color:var(--muted);cursor:pointer;border:1px dashed var(--border);
+  background:none;transition:all 120ms;font-family:var(--font);
+}
+.stab-add:hover{color:var(--text);border-color:var(--accent);}
+
+#tb-spacer{flex:1;-webkit-app-region:drag;}
+
+/* Agent status pills */
+#tb-agents{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);-webkit-app-region:no-drag;}
+.ta-p{display:flex;align-items:center;gap:4px;}
+.ta-dot{width:7px;height:7px;border-radius:50%;}
+
+#mode-badge{font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;flex-shrink:0;-webkit-app-region:no-drag;}
+.mb-n{background:rgba(100,116,139,.15);color:var(--text-dim);}
+.mb-g{background:rgba(129,140,248,.15);color:var(--accent);}
+.mb-v{background:rgba(248,113,113,.12);color:var(--waiting);}
+
+.tbtn{
+  display:flex;align-items:center;gap:5px;
+  padding:6px 11px;border-radius:7px;font-size:13px;font-weight:500;
+  color:var(--text-dim);background:none;border:1px solid transparent;
+  cursor:pointer;transition:all 120ms;white-space:nowrap;
+  font-family:var(--font);-webkit-app-region:no-drag;
+}
+.tbtn:hover{color:var(--text);background:var(--surface2);border-color:var(--border);}
+.tbtn.on{color:var(--accent);background:rgba(129,140,248,.12);border-color:rgba(129,140,248,.3);}
+.tbtn.von{color:var(--waiting);background:rgba(248,113,113,.10);border-color:rgba(248,113,113,.3);animation:vpulse 1.2s ease-in-out infinite;}
+@keyframes vpulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 12px rgba(248,113,113,.3)}}
+
+/* ── Tab strip (movable) ── */
+#tabstrip{
+  display:flex;align-items:center;height:var(--tabs-h);flex-shrink:0;
+  background:var(--surface);border-bottom:1px solid var(--border);overflow:hidden;
+}
+#tabstrip.bottom{order:10;border-bottom:none;border-top:1px solid var(--border);}
+#win-tabs{display:flex;gap:2px;flex:1;overflow-x:auto;scrollbar-width:none;padding:4px 6px;}
+#win-tabs::-webkit-scrollbar{display:none;}
+.wtab{
+  display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;
+  font-size:13px;font-weight:500;color:var(--text-dim);cursor:pointer;
+  white-space:nowrap;flex-shrink:0;border:1px solid transparent;
+  transition:all 120ms;background:none;font-family:var(--font);
+}
+.wtab:hover{color:var(--text);background:var(--surface2);}
+.wtab.active{color:var(--text-bright);background:var(--card-hi);border-color:var(--border);}
+.wtab-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.wtab-lbl{outline:none;background:transparent;border:none;color:inherit;font:inherit;min-width:10px;cursor:default;}
+.wtab-lbl:focus{background:var(--surface2);border-radius:3px;padding:0 4px;cursor:text;}
+.ts-move{
+  padding:0 10px;height:100%;display:flex;align-items:center;font-size:12px;
+  color:var(--muted);cursor:pointer;border-left:1px solid var(--border);
+  transition:color 120ms;flex-shrink:0;
+}
+.ts-move:hover{color:var(--text);}
+
+/* ── Workspace ── */
+#workspace{display:flex;flex:1;overflow:hidden;}
+
+/* ── Panel base ── */
+.panel{
+  display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;
+  border-right:1px solid var(--border);position:relative;
+}
+.panel:last-child{border-right:none;}
+.ph{
+  height:36px;display:flex;align-items:center;padding:0 12px;gap:8px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  cursor:grab;user-select:none;font-size:12px;font-weight:600;color:var(--text-dim);
+  flex-shrink:0;
+}
+.ph:active{cursor:grabbing;}
+.ph-title{flex:1;}
+.ph-btn{
+  width:24px;height:24px;border-radius:5px;background:none;
+  border:1px solid var(--border);color:var(--muted);font-size:12px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all 100ms;
+}
+.ph-btn:hover{color:var(--text);background:var(--surface2);}
+.panel-resize{
+  position:absolute;right:0;top:0;bottom:0;width:4px;
+  cursor:col-resize;z-index:10;transition:background 100ms;
+}
+.panel-resize:hover,.panel-resize:active{background:var(--accent);}
+
+/* ── Gesture panel ── */
+#gesture-panel{width:0;overflow:hidden;transition:width 220ms cubic-bezier(.4,0,.2,1);}
+#gesture-panel.open{width:var(--cam-w);}
+#cam-view{position:relative;flex-shrink:0;}
+#cam-video{width:100%;aspect-ratio:4/3;object-fit:cover;transform:scaleX(-1);display:block;background:#000;opacity:.55;}
+#cam-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.cam-ph{width:100%;aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#0a0d14;color:var(--muted);font-size:13px;}
+.cam-btn{padding:8px 18px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;background:rgba(129,140,248,.15);border:1px solid rgba(129,140,248,.3);color:var(--accent);transition:all 120ms;}
+.cam-btn:hover{background:rgba(129,140,248,.25);}
+#hand-states{padding:10px 12px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;}
+.hs-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);}
+.hs-role{font-size:11px;font-weight:700;width:36px;flex-shrink:0;}
+.hs-role.r{color:#67e8f9;}.hs-role.l{color:#a78bfa;}
+.hs-g{flex:1;font-size:13px;font-weight:600;}
+.hs-c{width:48px;height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;}
+.hs-cf{height:100%;border-radius:2px;transition:width 80ms;}
+#gd{flex:1;overflow-y:auto;padding:10px 12px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;min-height:0;}
+.gd-t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);margin-bottom:7px;}
+.gd-map{display:flex;flex-direction:column;gap:2px;margin-bottom:12px;}
+.gd-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid transparent;transition:all 150ms;}
+.gd-row.fired{background:rgba(129,140,248,.15);border-color:rgba(129,140,248,.3);animation:gf .6s ease-out;}
+@keyframes gf{0%{background:rgba(129,140,248,.4)}100%{background:rgba(129,140,248,.15)}}
+.gd-e{font-size:17px;width:26px;text-align:center;flex-shrink:0;}
+.gd-i{flex:1;min-width:0;}
+.gd-n{font-size:12px;font-weight:600;color:var(--text);}
+.gd-c{font-size:11px;color:var(--text-dim);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.gd-tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;flex-shrink:0;}
+.gd-tag.r{background:rgba(103,232,249,.1);color:#67e8f9;}
+.gd-tag.l{background:rgba(167,139,250,.1);color:#a78bfa;}
+#gd-log{display:flex;flex-direction:column;gap:3px;}
+.gd-lr{font-size:12px;padding:4px 8px;border-radius:5px;background:var(--surface2);border-left:3px solid var(--border);display:flex;gap:6px;align-items:center;color:var(--text-dim);}
+.gd-lr.f{border-left-color:var(--accent);color:var(--text);}
+.gd-lt{font-family:var(--mono);font-size:10px;color:var(--muted);flex-shrink:0;}
+
+/* ── Sidebar ── */
+#sidebar-panel{width:var(--sidebar-w);}
+.sl-head{height:36px;display:flex;align-items:center;padding:0 12px;font-size:12px;font-weight:600;color:var(--text-dim);border-bottom:1px solid var(--border);gap:6px;flex-shrink:0;}
+.sl-c{background:var(--surface2);color:var(--text);font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;}
+#agent-list{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.arow{display:flex;align-items:center;height:44px;padding:0 10px 0 0;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:background 80ms;position:relative;}
+.arow:hover{background:var(--surface2);}
+.arow.sel{background:rgba(129,140,248,.10);}
+.arow.sel::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:0 2px 2px 0;}
+.arow.vt{background:rgba(248,113,113,.07);}
+.arow-bar{width:4px;height:100%;flex-shrink:0;transition:background 200ms;}
+.arow-num{width:28px;text-align:center;font-size:12px;font-weight:700;color:var(--text-dim);flex-shrink:0;font-family:var(--mono);}
+.arow-name{flex:1;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.arow-chip{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;flex-shrink:0;margin-right:3px;}
+.arow-ram{width:36px;height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;flex-shrink:0;margin-right:3px;}
+.arow-ram-f{height:100%;border-radius:2px;}
+/* RAM MB badge (shown when sorted by RAM) */
+.arow-rammb{font-size:10px;font-weight:700;font-family:var(--mono);color:var(--text-dim);flex-shrink:0;margin-right:4px;min-width:32px;text-align:right;}
+.sl-foot{border-top:1px solid var(--border);padding:7px 8px;display:flex;gap:3px;background:var(--surface);flex-shrink:0;}
+.sf-btn{flex:1;padding:5px;border-radius:6px;font-size:12px;font-weight:500;font-family:var(--font);color:var(--text-dim);background:none;border:none;cursor:pointer;transition:all 100ms;}
+.sf-btn:hover{color:var(--text);background:var(--surface2);}
+.sf-btn.on{color:var(--accent);background:rgba(129,140,248,.12);}
+.sl-new{display:flex;align-items:center;gap:5px;padding:8px 12px;border-top:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--muted);transition:all 100ms;flex-shrink:0;}
+.sl-new:hover{color:var(--text);background:var(--surface2);}
+
+/* ── Grid panel ── */
+#grid-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;border-right:none;}
+#pane-area{flex:1;overflow:hidden;}
+#pane-grid{display:grid;gap:1px;background:rgba(255,255,255,.05);height:100%;}
+#pane-grid.g1{grid-template-columns:1fr;}
+#pane-grid.g2{grid-template-columns:1fr 1fr;}
+#pane-grid.g3{grid-template-columns:1fr 1fr 1fr;}
+#pane-grid.g4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;}
+#pane-grid.g6{grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr;}
+#pane-grid.g8{grid-template-columns:1fr 1fr 1fr 1fr;grid-template-rows:1fr 1fr;}
+
+/* ── Pane ── */
+.pane{
+  background:var(--card);display:flex;flex-direction:column;
+  overflow:hidden;position:relative;cursor:pointer;
+  transition:filter 200ms,opacity 200ms;
+}
+.pane.dim{filter:brightness(.65) saturate(.7);opacity:.82;}
+.pane.lit{filter:none;opacity:1;}
+.pane.sel-pane .pane-head{border-bottom:2px solid var(--accent);}
+.pane:not(.sel-pane) .pane-head{border-bottom:1px solid var(--border);}
+
+/* Fullscreen pane overlay */
+.pane.fullscreen{
+  position:fixed;inset:0;z-index:200;border-radius:0;
+  width:100vw!important;height:100vh!important;
+}
+
+.pane-head{display:flex;align-items:center;gap:7px;padding:9px 12px 7px;flex-shrink:0;}
+.ph-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:background 300ms;}
+.ph-nw{flex:1;overflow:hidden;}
+.ph-name{
+  font-size:15px;font-weight:600;color:var(--text-bright);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;outline:none;cursor:default;
+}
+.ph-name.ed{cursor:text;background:var(--surface2);border-radius:4px;padding:0 5px;}
+.ph-win{font-size:12px;font-weight:600;color:var(--text-dim);background:var(--surface2);border-radius:4px;padding:1px 7px;flex-shrink:0;font-family:var(--mono);}
+.ph-status{font-size:12px;font-weight:600;padding:2px 9px;border-radius:5px;flex-shrink:0;}
+.ph-approve{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(251,146,60,.35);background:rgba(251,146,60,.15);color:var(--permission);font-family:var(--font);transition:all 120ms;flex-shrink:0;}
+.ph-approve:hover{background:rgba(251,146,60,.28);}
+/* Fullscreen toggle */
+.ph-fs{width:24px;height:24px;border-radius:5px;background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 100ms;flex-shrink:0;}
+.ph-fs:hover{color:var(--text);background:var(--surface2);}
+/* RAM badge on pane (shown when sorted by RAM) */
+.ph-rambadge{font-size:10px;font-weight:700;font-family:var(--mono);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text-dim);flex-shrink:0;}
+
+/* Pane body — two modes: todo (default) and hardware (Tab) */
+.pane-body{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+
+/* ── TODO view (default) ── */
+.pane-todo{flex:1;overflow:hidden;padding:8px 12px;display:flex;flex-direction:column;gap:6px;min-height:0;}
+.todo-progress-row{display:flex;align-items:baseline;justify-content:space-between;font-size:12px;color:var(--text-dim);flex-shrink:0;}
+.todo-pct{font-size:18px;font-weight:800;color:var(--text-bright);}
+.todo-track{height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;flex-shrink:0;}
+.todo-fill{height:100%;border-radius:3px;transition:width 500ms cubic-bezier(.4,0,.2,1);}
+.todo-items{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;display:flex;flex-direction:column;gap:3px;min-height:0;}
+.todo-item{display:flex;align-items:flex-start;gap:8px;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,.03);}
+.todo-item:last-child{border:none;}
+.todo-check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border);flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:10px;}
+.todo-check.done{background:var(--working);border-color:var(--working);color:#fff;}
+.todo-check.active{border-color:var(--accent);animation:tchk 1.5s ease-in-out infinite;}
+@keyframes tchk{0%,100%{border-color:var(--accent)}50%{border-color:rgba(129,140,248,.3)}}
+.todo-text{font-size:13px;color:var(--text);line-height:1.4;flex:1;}
+.todo-text.done{color:var(--text-dim);text-decoration:line-through;}
+.todo-text.active{color:var(--working);}
+
+/* Activity line below todos */
+.pane-activity{display:flex;align-items:center;gap:6px;padding:6px 12px;border-top:1px solid var(--border);flex-shrink:0;}
+.pa-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.pa-dot.spin{animation:spin 1.2s ease-in-out infinite;}
+@keyframes spin{0%,100%{opacity:1}50%{opacity:.3}}
+.pa-txt{font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.pa-txt.act{color:var(--working);}
+.pa-txt.err{color:var(--waiting);}
+.pa-txt.prm{color:var(--permission);}
+
+/* ── HARDWARE view (Tab key) ── */
+.pane-hw{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:8px;min-height:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.hw-section{flex-shrink:0;}
+.hw-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);margin-bottom:5px;}
+.hw-bar-row{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+.hw-bar-name{font-size:12px;color:var(--text-dim);width:32px;flex-shrink:0;}
+.hw-track{flex:1;height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;}
+.hw-fill{height:100%;border-radius:3px;transition:width 400ms;}
+.hw-val{font-size:12px;font-weight:600;width:52px;text-align:right;flex-shrink:0;font-family:var(--mono);}
+.hw-val.hot{color:var(--waiting);}
+.hw-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.hw-row:last-child{border:none;}
+.hw-row-k{color:var(--text-dim);}
+.hw-row-v{font-weight:600;font-family:var(--mono);}
+.hw-row-v.live{color:var(--working);}
+/* Children processes */
+.hw-child{
+  display:flex;align-items:center;gap:6px;padding:3px 0;
+  font-size:11px;color:var(--text-dim);border-bottom:1px solid rgba(255,255,255,.03);
+}
+.hw-child:last-child{border:none;}
+.hw-child-name{font-family:var(--mono);font-weight:600;color:var(--text);flex-shrink:0;}
+.hw-child-ram{font-family:var(--mono);margin-left:auto;flex-shrink:0;}
+
+/* Tab hint at bottom of pane */
+.pane-tab-hint{
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  padding:4px;border-top:1px solid var(--border);
+  font-size:10px;color:var(--muted);flex-shrink:0;cursor:pointer;
+  transition:all 100ms;
+}
+.pane-tab-hint:hover{color:var(--text);background:rgba(255,255,255,.03);}
+.pane-tab-hint kbd{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:0 4px;font-family:var(--mono);font-size:9px;}
+
+/* Pane footer */
+.pane-foot{display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(0,0,0,.12);border-top:1px solid var(--border);flex-shrink:0;}
+.pf-model{font-size:11px;color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pf-tok{font-size:11px;font-weight:600;color:var(--text-dim);font-family:var(--mono);flex-shrink:0;}
+/* Port badge */
+.pf-port{font-size:10px;font-weight:700;font-family:var(--mono);padding:1px 5px;border-radius:4px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.2);color:var(--working);flex-shrink:0;}
+
+/* Drag handle */
+.pane-drag{position:absolute;top:8px;right:38px;width:16px;height:16px;cursor:grab;display:none;align-items:center;justify-content:center;color:var(--muted);font-size:12px;background:var(--surface2);border-radius:3px;border:1px solid var(--border);}
+.pane:hover .pane-drag{display:flex;}
+.pane-drag:active{cursor:grabbing;}
+.pane.drag-over{outline:2px solid var(--accent);outline-offset:-2px;}
+.pane.dragging{opacity:.4;}
+
+/* ── Chat panel ── */
+#chat-panel{width:0;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width 220ms cubic-bezier(.4,0,.2,1);}
+#chat-panel.open{width:var(--chat-w);}
+#cp-head{height:48px;display:flex;align-items:center;padding:0 14px;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+#cp-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;display:inline-block;}
+#cp-name{font-size:15px;font-weight:700;flex:1;}
+#cp-status{font-size:12px;font-weight:600;padding:3px 10px;border-radius:5px;flex-shrink:0;}
+.cp-x{width:28px;height:28px;border-radius:6px;background:none;border:1px solid var(--border);color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 100ms;}
+.cp-x:hover{color:var(--text);background:var(--surface2);}
+#cp-summary{padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.1);}
+.cp-sr{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap;}
+.cp-sm{font-size:12px;color:var(--text-dim);}
+.cp-pt{height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;margin-top:4px;}
+.cp-pf{height:100%;border-radius:3px;background:var(--accent);transition:width 500ms;}
+.cp-perm{display:flex;gap:8px;margin-top:8px;}
+.cp-ap{flex:1;padding:9px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(52,211,153,.35);background:rgba(52,211,153,.12);color:var(--working);transition:all 120ms;}
+.cp-rj{flex:1;padding:9px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.10);color:var(--waiting);transition:all 120ms;}
+.cp-ap:hover{background:rgba(52,211,153,.22);}
+.cp-rj:hover{background:rgba(248,113,113,.20);}
+#cp-msgs{flex:1;overflow-y:auto;padding:14px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;display:flex;flex-direction:column;gap:10px;min-height:0;}
+.msg{display:flex;flex-direction:column;gap:3px;}
+.msg-role{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim);}
+.msg-role.user{color:var(--accent);}
+.msg-role.agent{color:var(--working);}
+.msg-role.tool{color:var(--permission);}
+.msg-body{font-size:13px;line-height:1.6;color:var(--text);background:var(--surface2);border-radius:8px;padding:9px 12px;border:1px solid var(--border);word-break:break-word;}
+.msg.user .msg-body{background:rgba(129,140,248,.10);border-color:rgba(129,140,248,.2);}
+.msg.tool .msg-body{font-family:var(--mono);font-size:12px;background:rgba(0,0,0,.2);color:var(--text-dim);border-color:rgba(251,146,60,.2);}
+.msg.streaming .msg-body::after{content:'▌';color:var(--accent);animation:cur .7s step-end infinite;}
+@keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
+#cp-inp-wrap{padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:8px;align-items:flex-end;}
+#cp-inp{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;resize:none;min-height:38px;max-height:120px;transition:border-color 140ms;line-height:1.5;}
+#cp-inp:focus{border-color:rgba(129,140,248,.4);}
+#cp-inp::placeholder{color:var(--muted);}
+.cp-send{padding:8px 13px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;background:rgba(129,140,248,.18);border:1px solid rgba(129,140,248,.35);color:var(--accent);transition:all 120ms;flex-shrink:0;}
+.cp-send:hover{background:rgba(129,140,248,.28);}
+.cp-ptt{padding:8px 11px;border-radius:8px;font-size:15px;cursor:pointer;background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.25);color:var(--waiting);transition:all 120ms;flex-shrink:0;}
+.cp-ptt.on{background:rgba(248,113,113,.25);animation:vpulse 1s infinite;}
+
+/* ── Folder graph panel ── */
+#graph-panel{width:0;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width 220ms cubic-bezier(.4,0,.2,1);}
+#graph-panel.open{width:280px;}
+#graph-canvas{flex:1;width:100%;}
+.graph-node{position:absolute;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--text-dim);white-space:nowrap;transition:all 120ms;user-select:none;}
+.graph-node:hover{border-color:var(--accent);color:var(--accent);}
+.graph-node.root{background:rgba(129,140,248,.12);border-color:rgba(129,140,248,.3);color:var(--accent);}
+.graph-node.agent-node{border-color:rgba(52,211,153,.3);color:var(--working);}
+
+/* ── New agent modal ── */
+#new-agent-overlay{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;}
+#new-agent-overlay.open{display:flex;}
+#new-agent-modal{
+  width:420px;background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+#nam-head{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+#nam-head h2{font-size:16px;font-weight:700;flex:1;}
+.nam-x{width:28px;height:28px;border-radius:6px;background:none;border:1px solid var(--border);color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.nam-x:hover{color:var(--text);background:var(--surface2);}
+#nam-body{padding:16px 20px;}
+.nam-types{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;}
+.nam-type{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:14px 8px;border-radius:10px;cursor:pointer;
+  border:2px solid var(--border);background:var(--card);
+  transition:all 140ms;
+}
+.nam-type:hover{border-color:var(--accent);}
+.nam-type.sel{border-color:var(--accent);background:rgba(129,140,248,.1);}
+.nam-type-icon{font-size:24px;}
+.nam-type-name{font-size:12px;font-weight:700;color:var(--text);}
+.nam-type-desc{font-size:10px;color:var(--text-dim);text-align:center;}
+.nam-field{margin-bottom:12px;}
+.nam-label{font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:5px;}
+.nam-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color 140ms;}
+.nam-input:focus{border-color:rgba(129,140,248,.4);}
+#nam-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.nam-cancel{padding:8px 16px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;background:none;border:1px solid var(--border);color:var(--text-dim);transition:all 120ms;}
+.nam-cancel:hover{color:var(--text);background:var(--surface2);}
+.nam-create{padding:8px 20px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;background:rgba(129,140,248,.18);border:1px solid rgba(129,140,248,.35);color:var(--accent);transition:all 120ms;}
+.nam-create:hover{background:rgba(129,140,248,.28);}
+
+/* ── Options overlay ── */
+#opts-overlay{position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:none;align-items:flex-start;justify-content:flex-end;}
+#opts-overlay.open{display:flex;}
+#opts-panel{width:340px;height:100vh;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;box-shadow:-8px 0 32px rgba(0,0,0,.4);}
+#opts-head{height:50px;display:flex;align-items:center;padding:0 16px;font-size:15px;font-weight:700;border-bottom:1px solid var(--border);flex-shrink:0;gap:10px;}
+.opts-x{margin-left:auto;width:28px;height:28px;border-radius:6px;background:none;border:1px solid var(--border);color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 100ms;}
+.opts-x:hover{color:var(--text);background:var(--surface2);}
+#opts-body{flex:1;overflow-y:auto;padding:16px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.opts-section{margin-bottom:20px;}
+.opts-st{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-dim);margin-bottom:10px;}
+
+/* Theme presets */
+.preset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px;}
+.preset{
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:10px 6px;border-radius:9px;cursor:pointer;
+  border:2px solid var(--border);background:var(--card);transition:all 140ms;
+}
+.preset:hover{border-color:var(--accent);}
+.preset.active-preset{border-color:var(--accent);background:rgba(129,140,248,.1);}
+.preset-swatch{display:flex;gap:2px;}
+.preset-dot{width:12px;height:12px;border-radius:3px;}
+.preset-name{font-size:10px;font-weight:700;color:var(--text-dim);text-align:center;}
+
+/* Colour rows */
+.opts-cr{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);}
+.opts-cr:last-child{border:none;}
+.opts-cl{font-size:13px;color:var(--text);}
+.opts-ci{width:36px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none;padding:0;}
+
+/* Toggle row */
+.opts-tr{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);}
+.opts-tr:last-child{border:none;}
+.opts-tl{font-size:13px;color:var(--text);}
+.tog{width:42px;height:24px;border-radius:12px;background:rgba(255,255,255,.12);border:none;cursor:pointer;position:relative;transition:background 200ms;flex-shrink:0;}
+.tog.on{background:var(--accent);}
+.tog::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:10px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:transform 200ms;}
+.tog.on::after{transform:translateX(18px);}
+.opts-sel{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--font);font-size:13px;width:100%;margin-top:4px;}
+.opts-reset{padding:8px 14px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.3);color:var(--waiting);transition:all 120ms;}
+.opts-reset:hover{background:rgba(248,113,113,.2);}
+
+/* ── Toast + statusbar ── */
+#toast{position:fixed;top:58px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border-hi);border-radius:9px;padding:9px 20px;font-size:14px;font-weight:600;opacity:0;transition:opacity 160ms;white-space:nowrap;pointer-events:none;z-index:900;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+#toast.show{opacity:1;}
+#statusbar{display:flex;align-items:center;height:var(--sb-h);background:var(--surface);border-top:1px solid var(--border);overflow:hidden;flex-shrink:0;}
+.sb{display:flex;align-items:center;gap:5px;padding:0 12px;height:100%;font-size:12px;font-weight:500;border-right:1px solid var(--border);white-space:nowrap;flex-shrink:0;}
+.sb.grow{flex:1;border-right:none;}
+kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:var(--mono);font-size:11px;}
+.sb-hints{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--text-dim);}
+
+/* State colours */
+.s-waiting   {background:rgba(248,113,113,.14);color:var(--waiting);}
+.s-working   {background:rgba(52,211,153,.13); color:var(--working);}
+.s-permission{background:rgba(251,146,60,.15); color:var(--permission);}
+.s-done      {background:rgba(96,165,250,.13); color:var(--done);}
+.s-error     {background:rgba(248,113,113,.15);color:var(--error);}
+.s-idle      {background:rgba(71,85,105,.2);   color:var(--idle);}
+.s-not_started{background:rgba(71,85,105,.15); color:var(--idle);}
+@keyframes wring{0%,100%{box-shadow:0 0 0 0 rgba(52,211,153,.6)}50%{box-shadow:0 0 0 4px rgba(52,211,153,0)}}
+
+/* ── Gesture PiP (Picture-in-Picture debug) ── */
+#gesture-pip{
+  position:fixed;bottom:40px;right:16px;z-index:500;
+  border-radius:10px;overflow:hidden;
+  background:#000;
+  border:1px solid rgba(129,140,248,.35);
+  box-shadow:0 4px 24px rgba(0,0,0,.6);
+  cursor:pointer;display:none;
+  transition:width 200ms,height 200ms;
+}
+#gesture-pip.show{display:block;}
+#gesture-pip.sz-sm{width:180px;height:135px;}
+#gesture-pip.sz-md{width:320px;height:240px;}
+#gesture-pip.sz-lg{width:480px;height:360px;}
+#pip-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;opacity:.55;}
+#pip-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+#pip-label{
+  position:absolute;top:6px;left:8px;
+  background:rgba(0,0,0,.6);border-radius:4px;padding:2px 7px;
+  font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.04em;
+}
+#pip-size{
+  position:absolute;bottom:6px;right:8px;
+  background:rgba(0,0,0,.5);border-radius:4px;padding:2px 6px;
+  font-size:10px;color:var(--muted);
+}
+#pip-gesture{
+  position:absolute;bottom:6px;left:8px;
+  background:rgba(0,0,0,.5);border-radius:4px;padding:2px 6px;
+  font-size:11px;font-weight:600;color:var(--working);
+  max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- Gesture PiP debug overlay -->
+<div id="gesture-pip" class="sz-sm" onclick="cyclePipSize()" title="Click to cycle size">
+  <video id="pip-video" autoplay playsinline muted></video>
+  <canvas id="pip-canvas"></canvas>
+  <div id="pip-label">✋ gesture</div>
+  <div id="pip-gesture">—</div>
+  <div id="pip-size">SM · click to resize</div>
+</div>
+
+<!-- New agent modal -->
+<div id="new-agent-overlay" onclick="closeNewAgent(event)">
+  <div id="new-agent-modal">
+    <div id="nam-head">
+      <h2>New Agent</h2>
+      <button class="nam-x" onclick="closeNewAgentModal()">✕</button>
+    </div>
+    <div id="nam-body">
+      <div class="nam-types">
+        <div class="nam-type sel" onclick="selectAgentType(this,'qalcode')" data-type="qalcode">
+          <span class="nam-type-icon">🤖</span>
+          <span class="nam-type-name">QalCode 2</span>
+          <span class="nam-type-desc">AI coding agent</span>
+        </div>
+        <div class="nam-type" onclick="selectAgentType(this,'claude')" data-type="claude">
+          <span class="nam-type-icon">⚡</span>
+          <span class="nam-type-name">Claude Code</span>
+          <span class="nam-type-desc">Direct Claude CLI</span>
+        </div>
+        <div class="nam-type" onclick="selectAgentType(this,'terminal')" data-type="terminal">
+          <span class="nam-type-icon">⬛</span>
+          <span class="nam-type-name">Terminal</span>
+          <span class="nam-type-desc">Plain shell pane</span>
+        </div>
+      </div>
+      <div class="nam-field">
+        <div class="nam-label">Project name / window label</div>
+        <input class="nam-input" id="nam-name" type="text" placeholder="e.g. my-project" autocomplete="off"/>
+      </div>
+      <div class="nam-field">
+        <div class="nam-label">Working directory (optional)</div>
+        <input class="nam-input" id="nam-dir" type="text" placeholder="~/projects/my-project" autocomplete="off"/>
+      </div>
+    </div>
+    <div id="nam-foot">
+      <button class="nam-cancel" onclick="closeNewAgentModal()">Cancel</button>
+      <button class="nam-create" onclick="createAgent()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Options overlay -->
+<div id="opts-overlay" onclick="closeOptsOutside(event)">
+  <div id="opts-panel">
+    <div id="opts-head">
+      ⚙ Options
+      <button class="opts-x" onclick="toggleOpts()">✕</button>
+    </div>
+    <div id="opts-body">
+
+      <div class="opts-section">
+        <div class="opts-st">Theme presets</div>
+        <div class="preset-grid" id="preset-grid"></div>
+      </div>
+
+      <div class="opts-section">
+        <div class="opts-st">Colours</div>
+        <div class="opts-cr"><span class="opts-cl">Background</span><input class="opts-ci" type="color" value="#111827" oninput="setCol('--bg',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Surface</span><input class="opts-ci" type="color" value="#1a2332" oninput="setCol('--surface',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Card</span><input class="opts-ci" type="color" value="#1e2d42" oninput="setCol('--card',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Accent</span><input class="opts-ci" type="color" value="#818cf8" oninput="setCol('--accent',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Text</span><input class="opts-ci" type="color" value="#e2e8f5" oninput="setCol('--text',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Waiting</span><input class="opts-ci" type="color" value="#f87171" oninput="setCol('--waiting',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Working</span><input class="opts-ci" type="color" value="#34d399" oninput="setCol('--working',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Permission</span><input class="opts-ci" type="color" value="#fb923c" oninput="setCol('--permission',this.value)"></div>
+        <div class="opts-cr"><span class="opts-cl">Done</span><input class="opts-ci" type="color" value="#60a5fa" oninput="setCol('--done',this.value)"></div>
+      </div>
+
+      <div class="opts-section">
+        <div class="opts-st">Layout</div>
+        <div class="opts-tr"><span class="opts-tl">Tab strip at bottom</span><button class="tog" id="tog-tabs" onclick="toggleTabsBottom()"></button></div>
+        <div class="opts-tr"><span class="opts-tl">Dim inactive panes</span><button class="tog on" id="tog-dim" onclick="toggleDim()"></button></div>
+        <div class="opts-tr"><span class="opts-tl">Auto-open chat on select</span><button class="tog on" id="tog-chat" onclick="toggleAutoChat()"></button></div>
+        <div class="opts-tr"><span class="opts-tl">Show graph panel</span><button class="tog" id="tog-graph" onclick="toggleGraph()"></button></div>
+      </div>
+
+      <div class="opts-section">
+        <div class="opts-st">Grid layout</div>
+        <select class="opts-sel" id="opts-grid" onchange="setGridMode(this.value)">
+          <option value="auto">Auto (fit agents)</option>
+          <option value="2">2 columns</option>
+          <option value="3">3 columns</option>
+          <option value="4">2×2 grid</option>
+          <option value="6">3×2 grid</option>
+        </select>
+      </div>
+
+      <div class="opts-section">
+        <div class="opts-st">Gesture swipe sensitivity</div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-dim);">
+          <span>Low</span>
+          <input type="range" min="1" max="5" value="3" style="flex:1" id="opts-sens" oninput="setSens(this.value)">
+          <span>High</span>
+        </div>
+      </div>
+
+      <div class="opts-section">
+        <button class="opts-reset" onclick="resetCols()">Reset colours to default</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <!-- TOPBAR -->
+  <div id="topbar" style="order:1">
+    <div class="tl"></div>
+    <div class="brand"><div class="bdot"></div>gmux</div>
+    <div id="session-tabs"></div>
+    <div id="tb-spacer"></div>
+    <div id="tb-agents">
+      <div class="ta-p"><span class="ta-dot" style="background:var(--waiting)"></span><span id="ta-w">0</span></div>
+      <div class="ta-p"><span class="ta-dot" style="background:var(--working);animation:wring 1.4s ease-in-out infinite"></span><span id="ta-wk">0</span></div>
+      <div class="ta-p"><span class="ta-dot" style="background:var(--permission)"></span><span id="ta-p">0</span></div>
+    </div>
+    <div id="mode-badge" class="mb-n">Normal</div>
+    <button class="tbtn" id="btn-g" onclick="toggleGesture()">✋ Gesture</button>
+    <button class="tbtn" id="btn-v" onclick="toggleVoice()">🎙 Voice</button>
+    <button class="tbtn" onclick="toggleGraph()">🗂 Graph</button>
+    <button class="tbtn" onclick="toggleOpts()">⚙ Options</button>
+  </div>
+
+  <!-- TAB STRIP -->
+  <div id="tabstrip" style="order:2">
+    <div id="win-tabs"></div>
+    <div class="ts-move" onclick="toggleTabsBottom()" title="Move tab strip top/bottom">⇅</div>
+  </div>
+
+  <!-- WORKSPACE -->
+  <div id="workspace" style="order:3;display:flex;flex:1;overflow:hidden;">
+
+    <!-- Gesture panel -->
+    <div class="panel" id="gesture-panel">
+      <div class="ph" data-panel="gesture-panel">
+        <span class="ph-title">✋ Gesture</span>
+        <span id="gp-pill" style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px;background:rgba(129,140,248,.15);color:var(--accent);">Off</span>
+        <button class="ph-btn" onclick="toggleGesture()">✕</button>
+      </div>
+      <div id="cam-view">
+        <div class="cam-ph" id="cam-ph">
+          <div>Camera off</div>
+          <button class="cam-btn" onclick="enableCamera()">Enable camera</button>
+        </div>
+        <video id="cam-video" autoplay playsinline muted style="display:none"></video>
+        <canvas id="cam-canvas"></canvas>
+      </div>
+      <div id="hand-states">
+        <div class="hs-row"><span class="hs-role r">Right</span><span class="hs-g" id="hs-r">—</span><div class="hs-c"><div class="hs-cf" id="hs-rc" style="width:0;background:#67e8f9"></div></div></div>
+        <div class="hs-row"><span class="hs-role l">Left</span><span class="hs-g" id="hs-l">—</span><div class="hs-c"><div class="hs-cf" id="hs-lc" style="width:0;background:#a78bfa"></div></div></div>
+      </div>
+      <div id="gd">
+        <div class="gd-t">Gesture → Command</div>
+        <div class="gd-map" id="gd-map"></div>
+        <div class="gd-t" style="margin-top:10px">Recent</div>
+        <div id="gd-log"></div>
+      </div>
+      <div class="panel-resize" id="resize-g"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="panel" id="sidebar-panel">
+      <div class="ph" data-panel="sidebar-panel">
+        <span class="ph-title">Agents</span>
+        <span class="sl-c" id="sl-c">0</span>
+      </div>
+      <div id="agent-list"></div>
+      <div class="sl-foot">
+        <button class="sf-btn on" id="sfb-p" onclick="setSort('priority')">Priority</button>
+        <button class="sf-btn"    id="sfb-w" onclick="setSort('window')">Window</button>
+        <button class="sf-btn"    id="sfb-r" onclick="setSort('ram')">RAM</button>
+      </div>
+      <div class="sl-new" onclick="openNewAgent()">
+        <span>＋</span><span>New agent</span>
+      </div>
+      <div class="panel-resize" id="resize-s"></div>
+    </div>
+
+    <!-- Grid panel -->
+    <div class="panel" id="grid-panel" style="flex:1;border-right:none;">
+      <div id="pane-area">
+        <div id="pane-grid" class="g4"></div>
+      </div>
+    </div>
+
+    <!-- Chat panel -->
+    <div class="panel" id="chat-panel" style="border-right:none;">
+      <div class="ph" data-panel="chat-panel">
+        <span class="ph-title" id="cp-panel-title">Agent</span>
+        <button class="ph-btn" onclick="closeChat()">✕</button>
+      </div>
+      <div id="cp-head">
+        <span id="cp-dot"></span>
+        <span id="cp-name">—</span>
+        <span id="cp-status"></span>
+        <button class="cp-x" onclick="closeChat()">✕</button>
+      </div>
+      <div id="cp-summary"></div>
+      <div id="cp-msgs"></div>
+      <div id="cp-inp-wrap">
+        <textarea id="cp-inp" rows="1" placeholder="Send a message…" onkeydown="chatKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="cp-ptt" id="cp-ptt" onmousedown="startPTT()" onmouseup="stopPTT()" ontouchstart="startPTT()" ontouchend="stopPTT()">🎙</button>
+        <button class="cp-send" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+
+    <!-- Graph panel -->
+    <div class="panel" id="graph-panel" style="border-right:none;">
+      <div class="ph" data-panel="graph-panel">
+        <span class="ph-title">🗂 Folders</span>
+        <button class="ph-btn" onclick="toggleGraph()">✕</button>
+      </div>
+      <canvas id="graph-canvas"></canvas>
+    </div>
+
+  </div><!-- /workspace -->
+
+  <!-- STATUSBAR -->
+  <div id="statusbar" style="order:11">
+    <div class="sb" id="sb-info">gmux · default</div>
+    <div class="sb" id="sb-counts"></div>
+    <div class="sb grow"></div>
+    <div class="sb">
+      <div class="sb-hints">
+        <span><kbd>←→↑↓</kbd> navigate</span>
+        <span><kbd>Tab</kbd> hardware</span>
+        <span><kbd>Enter</kbd> fullscreen/approve</span>
+        <span><kbd>J</kbd> jump</span>
+        <span><kbd>G</kbd> gesture</span>
+        <span><kbd>N</kbd> new agent</span>
+      </div>
+    </div>
+    <div class="sb" id="sb-src" style="color:var(--muted)">● mock</div>
+  </div>
+</div>
+
+<script type="module">
+import { MOCK_PANES, STATE_COLOR, STATE_LABEL, panesArray, fmtRam, fmtTokens, fmtUptime, ramPct, initDataSource } from '../shared/mock-data.js';
+import { GestureEngine }   from '../shared/gesture-engine.js';
+import { GestureRenderer } from '../shared/gesture-renderer.js';
+
+// ═══════════════════════════════════════════════════════════
+// MOCK TODO ITEMS per pane (simulate real todo breakdown)
+// ═══════════════════════════════════════════════════════════
+const MOCK_TODOS = {
+  '%1': ['Read gesture-engine.js','Wire renderer events','Test FIST gesture','Test SWIPE gestures','Handle multi-hand','Write docs','Compile bundle','Deploy to dev'],
+  '%2': ['Analyse user flow','Implement chat backend','Add streaming support','Test with agents','Code review'],
+  '%3': ['Read main.rs structure','Identify edit target','Make change to src/main.rs','Run tests'],
+  '%4': ['Enumerate TS files','Parse type signatures','Build type map JSON','Validate output','Generate report','Write test cases','Fix edge cases','Review output','Final QA'],
+  '%5': ['Run npm build','Run tests','Deploy to staging','Smoke test','Tag release'],
+  '%6': [],
+  '%7': ['Read GESTURES.md part 1','Read GESTURES.md part 2','Read GESTURES.md part 3'],
+  '%8': ['Setup build script','Configure webpack','Add polyfills','Link config','Test bundle','Fix exit errors'],
+};
+
+// Mock children processes per pane (hardware tab)
+const MOCK_CHILDREN = {
+  '%1': [{name:'node',ram:480},{name:'esbuild',ram:92},{name:'fsevents',ram:31}],
+  '%2': [{name:'node',ram:320},{name:'openssl',ram:18}],
+  '%3': [{name:'node',ram:180},{name:'ripgrep',ram:12}],
+  '%4': [{name:'node',ram:890},{name:'tsc',ram:340},{name:'glob',ram:22},{name:'prettier',ram:88}],
+  '%5': [{name:'node',ram:680},{name:'webpack',ram:1200},{name:'terser',ram:140}],
+  '%6': [],
+  '%7': [{name:'node',ram:420}],
+  '%8': [{name:'node',ram:620},{name:'babel',ram:340}],
+};
+
+// Mock chat history per agent
+const CHAT = {
+  '%1':[
+    {role:'user', text:'Build the gesture engine and wire it to the renderer.'},
+    {role:'agent',text:'On it. Reading the existing renderer first, then I\'ll wire up the engine events.'},
+    {role:'tool', text:'read: src/gesture-renderer.js (1186 lines)'},
+    {role:'agent',text:'Done reading. Now wiring gestureStart events...'},
+    {role:'tool', text:'write: src/gesture-engine.js'},
+    {role:'agent',text:'✓ Compiled gesture-engine.js (1.2s)\nEngine wired. All gesture events now feed through to the renderer correctly.'},
+  ],
+  '%2':[{role:'system',text:'Agent waiting for instruction.'}],
+  '%3':[
+    {role:'user',text:'Find all files that reference gesture and check if main.rs needs updating.'},
+    {role:'agent',text:'Searching now...'},
+    {role:'tool', text:'grep -r "gesture" src/  →  47 matches in 8 files'},
+    {role:'agent',text:'Found the references. main.rs at line 302 needs updating — confirming with you first.'},
+    {role:'permission',text:'Request to edit: src/main.rs'},
+  ],
+  '%4':[
+    {role:'user',text:'Scan all TypeScript files and generate a type map.'},
+    {role:'agent',text:'Scanning src/**/*.ts...', streaming:true},
+  ],
+  '%5':[
+    {role:'user',text:'Run the build and deploy.'},
+    {role:'tool', text:'npm run build  →  ✓ Build passed (3.4s)'},
+    {role:'tool', text:'npm run deploy  →  ✓ Deployment complete.'},
+    {role:'agent',text:'Build and deploy successful. All checks passed.'},
+  ],
+  '%6':[{role:'system',text:'No AI agent in this pane.'}],
+  '%7':[
+    {role:'user',text:'Read the gesture docs and summarise the hand mapping.'},
+    {role:'tool', text:'read: docs/GESTURES.md [1/3]...', streaming:true},
+  ],
+  '%8':[
+    {role:'user',text:'Run the build script.'},
+    {role:'tool', text:'node build.js'},
+    {role:'error',text:'Error: Cannot find module \'./config\'\n✗ Exit code 1'},
+    {role:'agent',text:'Build failed. The config module is missing. Checking path issue.'},
+  ],
+};
+
+// Mock sessions (v2.2 feature)
+const SESSIONS = [
+  {name:'gmux',     color:'#818cf8'},
+  {name:'work',     color:'#34d399'},
+  {name:'personal', color:'#f87171'},
+];
+let activeSession = 'gmux';
+
+// Gesture command map
+const GMAP = [
+  {hand:'r',emoji:'→',name:'Swipe Right', cmd:'next-window',  desc:'tmux next-window'},
+  {hand:'r',emoji:'←',name:'Swipe Left',  cmd:'prev-window',  desc:'tmux prev-window'},
+  {hand:'r',emoji:'↑',name:'Swipe Up',    cmd:'scroll-up',    desc:'scroll terminal up'},
+  {hand:'r',emoji:'↓',name:'Swipe Down',  cmd:'scroll-down',  desc:'scroll terminal down'},
+  {hand:'l',emoji:'☝',name:'Point',       cmd:'voice-toggle', desc:'toggle voice listen'},
+  {hand:'l',emoji:'✌+',name:'Three',     cmd:'jump-waiting', desc:'jump to next waiting'},
+  {hand:'l',emoji:'👍',name:'Thumbs Up', cmd:'approve',      desc:'approve permission'},
+  {hand:'l',emoji:'👎',name:'Thumbs Down',cmd:'reject',       desc:'reject / send n'},
+  {hand:'l',emoji:'✋',name:'Open Palm', cmd:'open-chat',    desc:'open agent chat'},
+];
+const ACTION_LOG = [];
+
+// Theme presets
+const PRESETS = [
+  {name:'Ocean',    vars:{'--bg':'#111827','--surface':'#1a2332','--surface2':'#243044','--card':'#1e2d42','--accent':'#818cf8','--working':'#34d399','--waiting':'#f87171'}},
+  {name:'Forest',   vars:{'--bg':'#0f1a12','--surface':'#162119','--surface2':'#1d2e22','--card':'#1a2c20','--accent':'#4ade80','--working':'#86efac','--waiting':'#f87171'}},
+  {name:'Crimson',  vars:{'--bg':'#180a0a','--surface':'#241010','--surface2':'#2e1515','--card':'#281212','--accent':'#f87171','--working':'#34d399','--waiting':'#fbbf24'}},
+  {name:'Slate',    vars:{'--bg':'#0f172a','--surface':'#1e293b','--surface2':'#334155','--card':'#1e293b','--accent':'#94a3b8','--working':'#38bdf8','--waiting':'#fb923c'}},
+  {name:'Amber',    vars:{'--bg':'#1c1409','--surface':'#261c0c','--surface2':'#332610','--card':'#2a1f0e','--accent':'#fbbf24','--working':'#34d399','--waiting':'#f87171'}},
+  {name:'Mono',     vars:{'--bg':'#0d0d0d','--surface':'#171717','--surface2':'#202020','--card':'#1a1a1a','--accent':'#e5e5e5','--working':'#a3a3a3','--waiting':'#737373'}},
+];
+
+// ═══════════════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════════════
+let panes      = JSON.parse(JSON.stringify(MOCK_PANES));
+let paneOrder  = Object.keys(MOCK_PANES);
+let selectedId = '%3';   // start on a permission pane for demo effect
+let sortMode   = 'priority';
+let gridMode   = 'auto';
+let tabsBottom = false;
+let dimPanes   = true;
+let autoChat   = true;
+let chatOpen   = false;
+let gestureOn  = false;
+let voiceOn    = false;
+let voiceTarget= '%3';
+let swipeSens  = 3;
+let showGraph  = false;
+let pttActive  = false;
+let activePreset = 0;
+// Per-pane view mode: 'todo' | 'hw'
+const paneViewMode = {};
+// Per-pane fullscreen
+let fullscreenId = null;
+// Camera / gesture
+let stream, hldr, engine, renderer, lvt = -1;
+let _firedCmd = null;
+
+const col  = s => STATE_COLOR[s] || STATE_COLOR.idle;
+const $    = id => document.getElementById(id);
+
+// ═══════════════════════════════════════════════════════════
+// RENDER ORCHESTRATOR
+// ═══════════════════════════════════════════════════════════
+function render() {
+  const arr = sorted();
+  renderSessionTabs();
+  renderWinTabs(arr);
+  renderSidebar(arr);
+  renderGrid(arr);
+  renderTopbarCounts(arr);
+  renderStatusBar(arr);
+  if (chatOpen) updateChatHead();
+  renderGestureMap();
+}
+
+function sorted() {
+  const arr = panesArray(panes);
+  const idxOf = id => paneOrder.indexOf(id);
+  if (sortMode === 'window') return [...arr].sort((a,b) => a.window_index - b.window_index);
+  if (sortMode === 'ram')    return [...arr].sort((a,b) => (b.ram_mb||0) - (a.ram_mb||0));
+  return arr.sort((a,b) => {
+    const pri = {permission:0,sub_permission:1,waiting:2,error:3,working:4,done:5,idle:6,not_started:7};
+    const d = (pri[a.state]??9) - (pri[b.state]??9);
+    return d !== 0 ? d : idxOf(a.pane_id) - idxOf(b.pane_id);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// SESSION TABS (topbar)
+// ═══════════════════════════════════════════════════════════
+function renderSessionTabs() {
+  $('session-tabs').innerHTML = SESSIONS.map(s => `
+    <button class="stab${s.name===activeSession?' active':''}" onclick="selectSession('${s.name}')">
+      <span class="stab-dot" style="background:${s.color}"></span>${s.name}
+    </button>`).join('') +
+    `<button class="stab-add" onclick="addSession()">＋</button>`;
+}
+
+window.selectSession = function(name) {
+  activeSession = name; renderSessionTabs();
+};
+window.addSession = function() { toast('Session management coming soon'); };
+
+// ═══════════════════════════════════════════════════════════
+// WINDOW TABS (tabstrip)
+// ═══════════════════════════════════════════════════════════
+function renderWinTabs(arr) {
+  $('win-tabs').innerHTML = arr.map(p => {
+    const c = col(p.state);
+    const anim = p.state==='working' ? 'animation:wring 1.4s ease-in-out infinite' : '';
+    return `<button class="wtab${p.pane_id===selectedId?' active':''}" onclick="sel('${p.pane_id}')">
+      <span class="wtab-dot" style="background:${c};${anim}"></span>
+      <span class="wtab-lbl"
+        contenteditable="false"
+        ondblclick="startRenameTab(this,'${p.pane_id}')"
+        onblur="endRenameTab(this,'${p.pane_id}')"
+        onkeydown="renameKey(event,this,'${p.pane_id}')"
+      >${p.window_name}</span>
+    </button>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// SIDEBAR — agent list
+// ═══════════════════════════════════════════════════════════
+function renderSidebar(arr) {
+  $('sl-c').textContent = arr.length;
+  const isRam = sortMode === 'ram';
+  $('agent-list').innerHTML = arr.map(p => {
+    const c  = col(p.state);
+    const rp = ramPct(p.ram_mb||0);
+    const rc = rp>80?'var(--waiting)':rp>60?'var(--permission)':c;
+    const chip = (p.state!=='idle'&&p.state!=='not_started')
+      ? `<span class="arow-chip s-${p.state}">${STATE_LABEL[p.state]}</span>` : '';
+    const ramMb = isRam ? `<span class="arow-rammb">${fmtRam(p.ram_mb)}</span>` : '';
+    return `<div class="arow${p.pane_id===selectedId?' sel':''}${p.pane_id===voiceTarget&&voiceOn?' vt':''}"
+      onclick="sel('${p.pane_id}')">
+      <div class="arow-bar" style="background:${c}"></div>
+      <span class="arow-num">${p.window_index}</span>
+      <span class="arow-name">${p.window_name}</span>
+      ${chip}${ramMb}
+      <div class="arow-ram"><div class="arow-ram-f" style="width:${rp}%;background:${rc}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANE GRID
+// ═══════════════════════════════════════════════════════════
+function renderGrid(arr) {
+  const grid = $('pane-grid');
+  const n = arr.length;
+  let g;
+  if (gridMode==='auto') {
+    g = n<=1?'g1':n<=2?'g2':n<=3?'g3':n<=4?'g4':n<=6?'g6':'g8';
+  } else {
+    g = 'g'+gridMode;
+  }
+  grid.className = g;
+
+  const maxVisible = parseInt(g.replace('g','')) || 8;
+  const shown = arr.slice(0, maxVisible);
+  const existing = new Map([...grid.querySelectorAll('.pane')].map(el=>[el.dataset.id,el]));
+
+  shown.forEach(p => {
+    let el = existing.get(p.pane_id);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'pane';
+      el.dataset.id = p.pane_id;
+      grid.appendChild(el);
+    }
+    existing.delete(p.pane_id);
+    updatePaneEl(el, p);
+  });
+  existing.forEach(el => el.remove());
+  shown.forEach(p => grid.appendChild(grid.querySelector(`[data-id="${p.pane_id}"]`)));
+}
+
+function updatePaneEl(el, p) {
+  const c       = col(p.state);
+  const rp      = ramPct(p.ram_mb||0);
+  const cp      = p.cpu_pct||0;
+  const done    = p.todo_done||0;
+  const tot     = p.todo_total||0;
+  const pct     = tot>0 ? Math.round(done/tot*100) : 0;
+  const isSel   = p.pane_id === selectedId;
+  const isFS    = p.pane_id === fullscreenId;
+  const perm    = p.state==='permission'||p.state==='sub_permission';
+  const dotAnim = p.state==='working' ? 'animation:wring 1.4s ease-in-out infinite' : '';
+  const rCol    = rp>80?'var(--waiting)':rp>60?'var(--permission)':'var(--done)';
+  const cCol    = cp>80?'var(--waiting)':cp>60?'var(--permission)':'var(--working)';
+  const vm      = paneViewMode[p.pane_id] || 'todo';
+  const isRam   = sortMode==='ram';
+  const ll      = p.last_line || '—';
+  const aClass  = p.state==='error'?'err':p.state==='permission'||p.state==='sub_permission'?'prm':p.state==='working'?'act':'';
+
+  el.className = `pane${isFS?' fullscreen':''}${isSel?' lit sel-pane':dimPanes?' dim':' lit'}`;
+  el.draggable = true;
+
+  // Build todo items HTML
+  const todos = MOCK_TODOS[p.pane_id] || [];
+  const todoHtml = todos.length > 0 ? todos.map((t,i) => {
+    const isDone   = i < done;
+    const isActive = !isDone && i === done && p.state==='working';
+    return `<div class="todo-item">
+      <div class="todo-check${isDone?' done':isActive?' active':''}">${isDone?'✓':isActive?'⬛':''}</div>
+      <span class="todo-text${isDone?' done':isActive?' active':''}">${t}</span>
+    </div>`;
+  }).join('') : `<div style="color:var(--text-dim);font-size:13px;padding:10px 0">No tasks recorded</div>`;
+
+  // Build children HTML
+  const children = MOCK_CHILDREN[p.pane_id] || [];
+  const childrenHtml = children.length > 0 ? children.map(ch =>
+    `<div class="hw-child">
+      <span class="hw-child-name">${ch.name}</span>
+      <span class="hw-child-ram">${ch.ram} MB</span>
+    </div>`
+  ).join('') : '<div style="color:var(--muted);font-size:11px">No child processes</div>';
+
+  // RAM badge (only shown in RAM sort mode)
+  const ramBadge = isRam ? `<span class="ph-rambadge">${fmtRam(p.ram_mb)}</span>` : '';
+
+  el.innerHTML = `
+    <div class="pane-drag" title="Drag to reorder">⠿</div>
+    <div class="pane-head">
+      <span class="ph-dot" style="background:${c};${dotAnim}"></span>
+      <div class="ph-nw">
+        <span class="ph-name" id="ph-name-${p.pane_id}"
+          ondblclick="event.stopPropagation();startRenamePane(this,'${p.pane_id}')"
+          onblur="endRenamePane(this,'${p.pane_id}')"
+          onkeydown="renameKey(event,this,'${p.pane_id}')"
+        >${p.window_name}</span>
+      </div>
+      <span class="ph-win">${p.window_index}</span>
+      ${ramBadge}
+      ${perm
+        ? `<button class="ph-approve" onclick="event.stopPropagation();approve('${p.pane_id}')">Approve</button>`
+        : `<span class="ph-status s-${p.state}">${STATE_LABEL[p.state]}</span>`
+      }
+      <button class="ph-fs" onclick="event.stopPropagation();toggleFullscreen('${p.pane_id}')" title="Fullscreen">${isFS?'⊡':'⊞'}</button>
+    </div>
+    <div class="pane-body">
+      ${vm==='todo' ? `
+        <div class="pane-todo">
+          ${tot > 0 ? `
+            <div class="todo-progress-row">
+              <span class="todo-pct">${pct}%</span>
+              <span>${done}/${tot} tasks</span>
+            </div>
+            <div class="todo-track"><div class="todo-fill" style="width:${pct}%;background:${p.state==='working'?'var(--working)':'var(--accent)'}"></div></div>
+          ` : ''}
+          <div class="todo-items">${todoHtml}</div>
+        </div>
+        <div class="pane-activity">
+          <span class="pa-dot${p.state==='working'?' spin':''}" style="background:${c}"></span>
+          <span class="pa-txt ${aClass}">${ll}</span>
+        </div>
+      ` : `
+        <div class="pane-hw">
+          <div class="hw-section">
+            <div class="hw-lbl">Resources</div>
+            <div class="hw-bar-row">
+              <span class="hw-bar-name">RAM</span>
+              <div class="hw-track"><div class="hw-fill" style="width:${rp}%;background:${rCol}"></div></div>
+              <span class="hw-val${rp>70?' hot':''}">${fmtRam(p.ram_mb)}</span>
+            </div>
+            <div class="hw-bar-row">
+              <span class="hw-bar-name">CPU</span>
+              <div class="hw-track"><div class="hw-fill" style="width:${cp}%;background:${cCol}"></div></div>
+              <span class="hw-val${cp>70?' hot':''}">${cp}%</span>
+            </div>
+            ${p.vram_mb ? `<div class="hw-bar-row">
+              <span class="hw-bar-name">VRAM</span>
+              <div class="hw-track"><div class="hw-fill" style="width:${Math.min(100,p.vram_mb/8)}%;background:var(--accent)"></div></div>
+              <span class="hw-val">${fmtRam(p.vram_mb)}</span>
+            </div>` : ''}
+          </div>
+          <div class="hw-section">
+            <div class="hw-lbl">Agent info</div>
+            <div class="hw-row"><span class="hw-row-k">Model</span><span class="hw-row-v">${p.model||'—'}</span></div>
+            <div class="hw-row"><span class="hw-row-k">Session</span><span class="hw-row-v">${p.session_name||'—'}</span></div>
+            <div class="hw-row"><span class="hw-row-k">Port</span><span class="hw-row-v live">${p.api_port ? ':'+p.api_port : '—'}</span></div>
+            <div class="hw-row"><span class="hw-row-k">Tokens</span><span class="hw-row-v">${fmtTokens((p.token_in||0)+(p.token_out||0))}</span></div>
+            <div class="hw-row"><span class="hw-row-k">Uptime</span><span class="hw-row-v">${fmtUptime(p.uptime_s)}</span></div>
+            <div class="hw-row"><span class="hw-row-k">Tool</span><span class="hw-row-v">${p.current_tool||'—'}</span></div>
+          </div>
+          ${children.length > 0 ? `<div class="hw-section">
+            <div class="hw-lbl">Processes</div>
+            ${childrenHtml}
+          </div>` : ''}
+        </div>
+      `}
+    </div>
+    <div class="pane-tab-hint" onclick="event.stopPropagation();togglePaneView('${p.pane_id}')">
+      <kbd>Tab</kbd> ${vm==='todo'?'Hardware →':'← Todo'}
+    </div>
+    <div class="pane-foot">
+      <span class="pf-model">${p.model||p.session_name||'—'}</span>
+      ${p.api_port ? `<span class="pf-port">:${p.api_port}</span>` : ''}
+      <span class="pf-tok">${fmtTokens((p.token_in||0)+(p.token_out||0))} tok</span>
+    </div>
+  `;
+
+  // Click to select
+  el.onclick = () => sel(p.pane_id);
+
+  // Drag to reorder
+  el.draggable = true;
+  el.addEventListener('dragstart', e => { e.dataTransfer.setData('pane-id',p.pane_id); el.classList.add('dragging'); });
+  el.addEventListener('dragend',   () => el.classList.remove('dragging'));
+  el.addEventListener('dragover',  e => { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('drag-over');
+    const fromId = e.dataTransfer.getData('pane-id');
+    if (fromId && fromId !== p.pane_id) reorderPanes(fromId, p.pane_id);
+  });
+}
+
+function reorderPanes(fromId, toId) {
+  const fi = paneOrder.indexOf(fromId), ti = paneOrder.indexOf(toId);
+  if (fi<0||ti<0) return;
+  paneOrder.splice(fi,1); paneOrder.splice(ti,0,fromId);
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════
+// TOPBAR COUNTS + STATUS BAR
+// ═══════════════════════════════════════════════════════════
+function renderTopbarCounts(arr) {
+  const c={waiting:0,working:0,permission:0};
+  arr.forEach(p=>{if(c[p.state]!==undefined)c[p.state]++;});
+  $('ta-w').textContent  = c.waiting;
+  $('ta-wk').textContent = c.working;
+  $('ta-p').textContent  = c.permission;
+}
+
+function renderStatusBar(arr) {
+  const c={waiting:0,working:0,permission:0,error:0};
+  arr.forEach(p=>{if(c[p.state]!==undefined)c[p.state]++;});
+  const parts=[
+    c.waiting>0  ?`<span style="color:var(--waiting)">${c.waiting} waiting</span>`:'',
+    c.permission>0?`<span style="color:var(--permission)">${c.permission} pending</span>`:'',
+    c.working>0  ?`<span style="color:var(--working)">${c.working} working</span>`:'',
+    c.error>0    ?`<span style="color:var(--error)">${c.error} error</span>`:'',
+  ].filter(Boolean).join(' · ');
+  $('sb-counts').innerHTML = parts;
+  $('sb-info').textContent = `gmux · ${activeSession}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANE VIEW TOGGLE (todo ↔ hardware)
+// ═══════════════════════════════════════════════════════════
+window.togglePaneView = function(id) {
+  paneViewMode[id] = (paneViewMode[id]==='hw') ? 'todo' : 'hw';
+  render();
+};
+
+// ═══════════════════════════════════════════════════════════
+// FULLSCREEN
+// ═══════════════════════════════════════════════════════════
+window.toggleFullscreen = function(id) {
+  fullscreenId = (fullscreenId===id) ? null : id;
+  render();
+};
+
+// ═══════════════════════════════════════════════════════════
+// SELECTION + ACTIONS
+// ═══════════════════════════════════════════════════════════
+function sel(id) {
+  selectedId = id;
+  if (voiceOn) voiceTarget = id;
+  if (autoChat) openChat(id); else render();
+}
+window.sel = sel;
+
+function approve(id) {
+  if (!panes[id]) return;
+  panes[id].state = 'working'; panes[id].current_tool = null;
+  render(); toast('✓ Approved');
+  if (chatOpen && selectedId===id) renderChatPanel(panes[id]);
+  logAction(`Approved ${panes[id].window_name}`);
+}
+function reject(id) {
+  if (!panes[id]) return;
+  panes[id].state='waiting'; render(); toast('✗ Rejected');
+  logAction(`Rejected ${panes[id]?.window_name}`);
+}
+window.approve = approve;
+window.reject  = reject;
+
+function jumpToWaiting() {
+  const arr = sorted();
+  const r = arr.find(p=>p.state==='waiting'||p.state==='permission'||p.state==='sub_permission');
+  if (r) { sel(r.pane_id); logAction(`Jumped to ${r.window_name}`); }
+  else toast('No waiting agents');
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHAT PANEL
+// ═══════════════════════════════════════════════════════════
+function openChat(id) {
+  selectedId = id; chatOpen = true;
+  $('chat-panel').classList.add('open');
+  renderChatPanel(panes[id]);
+  render();
+}
+window.closeChat = function() {
+  chatOpen = false;
+  $('chat-panel').classList.remove('open');
+  render();
+};
+
+function updateChatHead() {
+  const p = panes[selectedId];
+  if (!p) return;
+  const c = col(p.state);
+  $('cp-panel-title').textContent = p.window_name;
+  $('cp-dot').style.cssText = `width:11px;height:11px;border-radius:50%;background:${c};flex-shrink:0;display:inline-block;`;
+  $('cp-name').textContent   = p.window_name;
+  const st = $('cp-status');
+  st.className = `ph-status s-${p.state}`;
+  st.textContent = STATE_LABEL[p.state];
+}
+
+function renderChatPanel(p) {
+  if (!p) return;
+  updateChatHead();
+  const done=p.todo_done||0, tot=p.todo_total||0, pct=tot>0?Math.round(done/tot*100):0;
+  const perm = p.state==='permission'||p.state==='sub_permission';
+
+  // Summary strip
+  let sum = `<div class="cp-sr">
+    <span class="cp-sm s-${p.state} arow-chip">${STATE_LABEL[p.state]}</span>
+    <span class="cp-sm">${fmtRam(p.ram_mb)} RAM · ${p.cpu_pct||0}% CPU · ${fmtTokens((p.token_in||0)+(p.token_out||0))} tok</span>
+  </div>`;
+  if (tot>0) sum += `<div class="cp-pt"><div class="cp-pf" style="width:${pct}%;background:${p.state==='working'?'var(--working)':'var(--accent)'}"></div></div>`;
+  if (perm)  sum += `<div class="cp-perm" style="margin-top:8px">
+    <button class="cp-ap" onclick="approve('${p.pane_id}');renderChatPanelById('${p.pane_id}')">✓ Approve</button>
+    <button class="cp-rj" onclick="reject('${p.pane_id}');renderChatPanelById('${p.pane_id}')">✗ Reject</button>
+  </div>`;
+  $('cp-summary').innerHTML = sum;
+
+  // Messages
+  const hist = CHAT[p.pane_id] || [{role:'system',text:'No conversation history.'}];
+  $('cp-msgs').innerHTML = hist.map(m => {
+    const role  = m.role==='error'?'tool':m.role==='permission'?'tool':m.role;
+    const extra = m.streaming?' streaming':'';
+    const errStyle = m.role==='error'?' style="border-left:3px solid var(--error)"':'';
+    return `<div class="msg ${role}">
+      <div class="msg-role ${role}">${m.role==='permission'?'⚠ Permission':m.role}</div>
+      <div class="msg-body${extra}"${errStyle}>${m.text.replace(/\n/g,'<br>')}</div>
+    </div>`;
+  }).join('');
+  setTimeout(()=>{ $('cp-msgs').scrollTop=$('cp-msgs').scrollHeight; },50);
+}
+
+window.renderChatPanelById = function(id) { renderChatPanel(panes[id]); };
+
+window.sendChat = function() {
+  const inp = $('cp-inp');
+  const txt = inp.value.trim();
+  if (!txt) return;
+  inp.value=''; window.autoResize(inp);
+  const hist = CHAT[selectedId] = CHAT[selectedId] || [];
+  hist.push({role:'user',text:txt});
+  renderChatPanel(panes[selectedId]);
+  setTimeout(()=>{
+    hist.push({role:'agent',text:'Processing your request…',streaming:true});
+    if (chatOpen) renderChatPanel(panes[selectedId]);
+    setTimeout(()=>{
+      const last = hist[hist.length-1];
+      if (last) { last.streaming=false; last.text='Got it. Working on that now.'; }
+      if (chatOpen) renderChatPanel(panes[selectedId]);
+    }, 1800);
+  }, 400);
+};
+
+window.chatKey = function(e) {
+  if (e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); window.sendChat(); }
+};
+
+window.autoResize = function(el) {
+  el.style.height='auto'; el.style.height=Math.min(120,el.scrollHeight)+'px';
+};
+
+window.startPTT = function() {
+  pttActive=true; $('cp-ptt').classList.add('on');
+};
+window.stopPTT = function() {
+  if (!pttActive) return; pttActive=false; $('cp-ptt').classList.remove('on');
+  const hist = CHAT[selectedId] = CHAT[selectedId]||[];
+  hist.push({role:'user',text:'(voice message sent)'});
+  setTimeout(()=>{ hist.push({role:'agent',text:'Processing voice message…',streaming:true}); if(chatOpen)renderChatPanel(panes[selectedId]); },400);
+  if (chatOpen) renderChatPanel(panes[selectedId]);
+};
+
+// ═══════════════════════════════════════════════════════════
+// RENAME (inline)
+// ═══════════════════════════════════════════════════════════
+function startRenamePane(el, id) {
+  el.contentEditable='true'; el.classList.add('ed'); el.focus(); selectAll(el);
+}
+function endRenamePane(el, id) {
+  el.contentEditable='false'; el.classList.remove('ed');
+  const n = el.textContent.trim();
+  if (n && panes[id]) { panes[id].window_name=n; render(); }
+}
+function startRenameTab(el, id) { el.contentEditable='true'; el.focus(); selectAll(el); }
+function endRenameTab(el, id) {
+  el.contentEditable='false';
+  const n = el.textContent.trim();
+  if (n && panes[id]) { panes[id].window_name=n; render(); }
+}
+window.startRenamePane = startRenamePane; window.endRenamePane = endRenamePane;
+window.startRenameTab  = startRenameTab;  window.endRenameTab  = endRenameTab;
+window.renameKey = function(e,el,id) {
+  if (e.key==='Enter')  { e.preventDefault(); el.blur(); }
+  if (e.key==='Escape') { el.contentEditable='false'; el.classList.remove('ed'); render(); }
+  e.stopPropagation();
+};
+function selectAll(el) {
+  const r=document.createRange(); r.selectNodeContents(el);
+  const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+
+// ═══════════════════════════════════════════════════════════
+// NEW AGENT MODAL
+// ═══════════════════════════════════════════════════════════
+window.openNewAgent = function() {
+  $('new-agent-overlay').classList.add('open');
+  setTimeout(()=>$('nam-name').focus(),50);
+};
+window.closeNewAgentModal  = function() { $('new-agent-overlay').classList.remove('open'); };
+window.closeNewAgent = function(e) {
+  if (e.target===$('new-agent-overlay')) window.closeNewAgentModal();
+};
+window.selectAgentType = function(el,type) {
+  document.querySelectorAll('.nam-type').forEach(t=>t.classList.remove('sel'));
+  el.classList.add('sel');
+};
+window.createAgent = function() {
+  const name = $('nam-name').value.trim() || 'new-agent';
+  const dir  = $('nam-dir').value.trim();
+  window.closeNewAgentModal();
+  toast(`✓ Agent '${name}' launching…`);
+  // In real app: invoke Tauri open_project(dir) or similar
+};
+
+// ═══════════════════════════════════════════════════════════
+// KEYBOARD NAV
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable) return;
+  const arr  = sorted();
+  const idx  = arr.findIndex(p=>p.pane_id===selectedId);
+  const gc   = $('pane-grid').className;
+  const cols = gc==='g1'?1:gc==='g2'?2:gc==='g3'?3:gc==='g4'?2:gc==='g6'?3:4;
+
+  if (e.key==='ArrowRight' && !e.altKey) { e.preventDefault(); if(idx<arr.length-1) sel(arr[idx+1].pane_id); }
+  if (e.key==='ArrowLeft'  && !e.altKey) { e.preventDefault(); if(idx>0) sel(arr[idx-1].pane_id); }
+  if (e.key==='ArrowDown'  && !e.altKey) { e.preventDefault(); if(idx+cols<arr.length) sel(arr[idx+cols].pane_id); }
+  if (e.key==='ArrowUp'    && !e.altKey) { e.preventDefault(); if(idx-cols>=0) sel(arr[idx-cols].pane_id); }
+  if (e.key==='Tab') {
+    e.preventDefault();
+    if (selectedId) {
+      window.togglePaneView(selectedId);
+    }
+  }
+  if (e.key==='j'||e.key==='J') jumpToWaiting();
+  if (e.key==='g'||e.key==='G') window.toggleGesture();
+  if (e.key==='v'||e.key==='V') window.toggleVoice();
+  if (e.key==='n'||e.key==='N') window.openNewAgent();
+  if (e.key==='Enter') {
+    e.preventDefault();
+    const p = panes[selectedId];
+    if (p&&(p.state==='permission'||p.state==='sub_permission')) approve(selectedId);
+    else if (p) { if(fullscreenId===selectedId) window.toggleFullscreen(selectedId); else if(!chatOpen) openChat(selectedId); }
+  }
+  if (e.key==='Escape') {
+    if ($('new-agent-overlay').classList.contains('open')) window.closeNewAgentModal();
+    else if ($('opts-overlay').classList.contains('open')) window.toggleOpts();
+    else if (fullscreenId) { fullscreenId=null; render(); }
+    else if (chatOpen) window.closeChat();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// PANEL RESIZE
+// ═══════════════════════════════════════════════════════════
+function initResize(handleId, panelId, cssVar, minW=160, maxW=600) {
+  const handle = $(handleId);
+  if (!handle) return;
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const panel  = $(panelId);
+    const startX = e.clientX;
+    const startW = panel.getBoundingClientRect().width;
+    const onMove = mv => {
+      const w = Math.max(minW, Math.min(maxW, startW + (mv.clientX - startX)));
+      document.documentElement.style.setProperty(cssVar, w+'px');
+    };
+    const onUp = () => { document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
+initResize('resize-g','gesture-panel','--cam-w',200,480);
+initResize('resize-s','sidebar-panel','--sidebar-w',160,400);
+
+// ═══════════════════════════════════════════════════════════
+// PANEL DRAG TO REORDER
+// ═══════════════════════════════════════════════════════════
+document.querySelectorAll('.ph[data-panel]').forEach(h => {
+  h.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('ph-btn')) return;
+    const panelId = h.dataset.panel;
+    const panel   = $(panelId);
+    if (!panel) return;
+    const workspace = $('workspace');
+    const startX = e.clientX;
+    const onMove = mv => {
+      if (Math.abs(mv.clientX - startX) < 10) return;
+      const panels = [...workspace.querySelectorAll('.panel')];
+      let insertBefore = null;
+      for (const p of panels) {
+        if (p===panel) continue;
+        if (mv.clientX < p.getBoundingClientRect().left + p.getBoundingClientRect().width/2) { insertBefore=p; break; }
+      }
+      if (insertBefore) workspace.insertBefore(panel, insertBefore);
+      else workspace.appendChild(panel);
+    };
+    const onUp = () => { document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// SORT
+// ═══════════════════════════════════════════════════════════
+window.setSort = function(s) {
+  sortMode = s;
+  ['p','w','r'].forEach(k => $('sfb-'+k).classList.toggle('on', k===s[0]));
+  render();
+};
+
+// ═══════════════════════════════════════════════════════════
+// GESTURE
+// ═══════════════════════════════════════════════════════════
+window.toggleGesture = async function() {
+  gestureOn = !gestureOn;
+  $('btn-g').classList.toggle('on', gestureOn);
+  $('gesture-panel').classList.toggle('open', gestureOn);
+  $('gp-pill').textContent = gestureOn ? 'Active' : 'Off';
+  updateModeBadge();
+  if (gestureOn) {
+    if (!stream) await startCamera();
+    else showPip();
+  } else {
+    hidePip();
+    pipRenderer = null;
+  }
+};
+
+window.enableCamera = async function() { await startCamera(); };
+
+// PiP size cycling
+const PIP_SIZES = ['sz-sm','sz-md','sz-lg'];
+const PIP_LABELS = ['SM · click to resize','MD · click to resize','LG · click to resize'];
+let pipSizeIdx = 0;
+
+window.cyclePipSize = function() {
+  const pip = $('gesture-pip');
+  pip.classList.remove(...PIP_SIZES);
+  pipSizeIdx = (pipSizeIdx + 1) % PIP_SIZES.length;
+  pip.classList.add(PIP_SIZES[pipSizeIdx]);
+  $('pip-size').textContent = PIP_LABELS[pipSizeIdx];
+  // Resize pip-canvas to match new container
+  setTimeout(syncPipCanvas, 220);
+};
+
+function syncPipCanvas() {
+  const pip  = $('gesture-pip');
+  const pcan = $('pip-canvas');
+  pcan.width  = pip.offsetWidth;
+  pcan.height = pip.offsetHeight;
+}
+
+function showPip() {
+  const pip    = $('gesture-pip');
+  const pipVid = $('pip-video');
+  pip.classList.add('show');
+  if (stream && pipVid.srcObject !== stream) {
+    pipVid.srcObject = stream;
+    pipVid.play().catch(()=>{});
+  }
+  syncPipCanvas();
+}
+
+function hidePip() {
+  $('gesture-pip').classList.remove('show');
+}
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:360},facingMode:'user'}});
+    const vid = $('cam-video');
+    $('cam-ph').style.display = 'none';
+    vid.style.display = 'block'; vid.srcObject = stream; await vid.play();
+    showPip();
+    await initEngine(); requestAnimationFrame(gloop);
+  } catch(err) {
+    toast('Camera not available'); gestureOn=false;
+    $('btn-g').classList.remove('on');
+    $('gesture-panel').classList.remove('open');
+    hidePip();
+    updateModeBadge();
+  }
+}
+
+async function initEngine() {
+  let HandLandmarker, FilesetResolver;
+  try {
+    const m = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm');
+    HandLandmarker=m.HandLandmarker; FilesetResolver=m.FilesetResolver;
+  } catch(e) { console.warn('[gmux] MediaPipe load failed:',e); return; }
+
+  const fs = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
+  hldr = await HandLandmarker.createFromOptions(fs,{
+    baseOptions:{
+      modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      delegate:'GPU'
+    },
+    runningMode:'VIDEO',numHands:2,
+    minHandDetectionConfidence:.5,minHandPresenceConfidence:.5,minTrackingConfidence:.5
+  });
+
+  engine   = new GestureEngine({gestureConfirmFrames:3,swipeVelocityThreshold:0.022/swipeSens*3,smoothingFactor:.7});
+  renderer = new GestureRenderer($('cam-canvas'),{
+    mirror:true,background:'video',
+    showSkeleton:true,showLandmarks:true,showLabels:true,
+    showTrails:true,showPinchCircle:true,showCursor:true,showMesh:false,
+    handColors:{
+      Left: {primary:'#a78bfa',secondary:'#7c3aed',glow:'rgba(167,139,250,.4)',mesh:'rgba(167,139,250,.06)'},
+      Right:{primary:'#67e8f9',secondary:'#0891b2',glow:'rgba(103,232,249,.4)',mesh:'rgba(103,232,249,.06)'}
+    }
+  });
+
+  engine.on('frame',({hand,gesture})=>{
+    const ne=$('hs-'+{Right:'r',Left:'l'}[hand]);
+    const ce=$('hs-'+{Right:'rc',Left:'lc'}[hand]);
+    if(ne) ne.textContent = gesture?.name||'—';
+    if(ce) ce.style.width  = ((gesture?.confidence||0)*100)+'%';
+  });
+
+  engine.on('gestureStart',({hand,gesture})=>{
+    const g   = gesture?.name;
+    const arr = sorted();
+    const idx = arr.findIndex(p=>p.pane_id===selectedId);
+    if (hand==='Right') {
+      if(g==='SWIPE_RIGHT'){fireCmd('next-window');sel(arr[(idx+1)%arr.length].pane_id);toast('→ next');logAction('Swipe Right → next window');}
+      if(g==='SWIPE_LEFT') {fireCmd('prev-window');sel(arr[(idx-1+arr.length)%arr.length].pane_id);toast('← prev');logAction('Swipe Left → prev window');}
+    }
+    if (hand==='Left') {
+      if(g==='POINT')      {fireCmd('voice-toggle');window.toggleVoice();logAction('Point → voice toggle');}
+      if(g==='THREE')      {fireCmd('jump-waiting');jumpToWaiting();logAction('Three → jump waiting');}
+      if(g==='THUMBS_UP')  {fireCmd('approve');const p=panes[selectedId];if(p&&(p.state==='permission'||p.state==='sub_permission'))approve(selectedId);logAction('Thumbs Up → approve');}
+      if(g==='THUMBS_DOWN'){fireCmd('reject');reject(selectedId);logAction('Thumbs Down → reject');}
+      if(g==='OPEN_PALM')  {fireCmd('open-chat');openChat(selectedId);logAction('Open Palm → open chat');}
+    }
+  });
+}
+
+// PiP renderer (separate instance, draws to pip-canvas)
+let pipRenderer = null;
+
+function gloop() {
+  if (!gestureOn) return;
+  requestAnimationFrame(gloop);
+  const vid = $('cam-video');
+  if (!hldr||!engine||!renderer||vid.paused||vid.currentTime===lvt) return;
+  lvt = vid.currentTime;
+
+  // Size main canvas
+  const gc = $('cam-canvas');
+  gc.width  = vid.videoWidth  || 320;
+  gc.height = vid.videoHeight || 240;
+
+  const res = hldr.detectForVideo(vid, performance.now());
+  const hd  = {
+    multiHandLandmarks: res.landmarks||[],
+    multiHandedness:    (res.handedness||[]).map(h=>({label:h[0]?.categoryName||'Right'}))
+  };
+  engine.update(hd);
+
+  const E = .12;
+  const adjustedLandmarks = hd.multiHandLandmarks.map(lms =>
+    lms.map(lm=>({...lm, x:(lm.x+E)/(1+E*2), y:(lm.y+E)/(1+E*2)}))
+  );
+  const drawData = {...hd, multiHandLandmarks: adjustedLandmarks};
+
+  // Draw on main gesture panel canvas
+  renderer.draw(drawData, engine);
+
+  // Draw skeleton on PiP canvas too
+  const pcan = $('pip-canvas');
+  if (pcan && $('gesture-pip').classList.contains('show')) {
+    if (!pipRenderer) {
+      pipRenderer = new GestureRenderer(pcan, {
+        mirror:true, background:'video',
+        showSkeleton:true, showLandmarks:true, showLabels:false,
+        showTrails:false, showPinchCircle:false, showCursor:false, showMesh:false,
+        handColors:{
+          Left: {primary:'#a78bfa',secondary:'#7c3aed',glow:'rgba(167,139,250,.4)',mesh:'rgba(167,139,250,.06)'},
+          Right:{primary:'#67e8f9',secondary:'#0891b2',glow:'rgba(103,232,249,.4)',mesh:'rgba(103,232,249,.06)'}
+        }
+      });
+    }
+    pcan.width  = pcan.offsetWidth  || 180;
+    pcan.height = pcan.offsetHeight || 135;
+    pipRenderer.canvas = pcan;  // update reference in case size changed
+    try { pipRenderer.draw(drawData, engine); } catch(e){}
+
+    // Update PiP gesture label
+    const activeGesture = engine.hands?.Right?.gesture?.name || engine.hands?.Left?.gesture?.name || '—';
+    const pipG = $('pip-gesture');
+    if (pipG) pipG.textContent = activeGesture !== '—' ? activeGesture : '';
+  }
+}
+
+function logAction(msg) {
+  const t=new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  ACTION_LOG.unshift({t,msg});
+  if(ACTION_LOG.length>8) ACTION_LOG.pop();
+  renderGestureLog();
+}
+function fireCmd(cmd) {
+  _firedCmd=cmd; renderGestureMap();
+  setTimeout(()=>{ _firedCmd=null; renderGestureMap(); }, 600);
+}
+
+function renderGestureMap() {
+  $('gd-map').innerHTML = GMAP.map(g=>`
+    <div class="gd-row${_firedCmd===g.cmd?' fired':''}">
+      <span class="gd-e">${g.emoji}</span>
+      <div class="gd-i"><div class="gd-n">${g.name}</div><div class="gd-c">${g.desc}</div></div>
+      <span class="gd-tag ${g.hand}">${g.hand==='r'?'Right':'Left'}</span>
+    </div>`).join('');
+}
+
+function renderGestureLog() {
+  $('gd-log').innerHTML = ACTION_LOG.map((e,i)=>`
+    <div class="gd-lr${i===0?' f':''}">
+      <span class="gd-lt">${e.t}</span>${e.msg}
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// VOICE
+// ═══════════════════════════════════════════════════════════
+window.toggleVoice = function() {
+  voiceOn = !voiceOn;
+  const btn = $('btn-v');
+  btn.classList.toggle('von', voiceOn);
+  btn.classList.toggle('on',  voiceOn);
+  btn.textContent = voiceOn ? '🎙 Voice On' : '🎙 Voice';
+  if (voiceOn) voiceTarget = selectedId;
+  updateModeBadge(); toast(voiceOn?'🎙 Voice on':'🎙 Voice off'); render();
+};
+
+function updateModeBadge() {
+  const mb = $('mode-badge');
+  if (gestureOn) { mb.className='mb-g'; mb.textContent='Gesture'; }
+  else if (voiceOn) { mb.className='mb-v'; mb.textContent='Voice'; }
+  else { mb.className='mb-n'; mb.textContent='Normal'; }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB STRIP POSITION TOGGLE
+// ═══════════════════════════════════════════════════════════
+window.toggleTabsBottom = function() {
+  tabsBottom = !tabsBottom;
+  const ts = $('tabstrip');
+  ts.classList.toggle('bottom', tabsBottom);
+  if (tabsBottom) ts.style.order='10'; else ts.style.order='2';
+  const tog = $('tog-tabs');
+  if (tog) tog.classList.toggle('on', tabsBottom);
+};
+
+// ═══════════════════════════════════════════════════════════
+// DIM / AUTO-CHAT / GRAPH toggles
+// ═══════════════════════════════════════════════════════════
+window.toggleDim = function() {
+  dimPanes = !dimPanes;
+  const t=$('tog-dim'); if(t)t.classList.toggle('on',dimPanes); render();
+};
+window.toggleAutoChat = function() {
+  autoChat = !autoChat;
+  const t=$('tog-chat'); if(t)t.classList.toggle('on',autoChat);
+};
+
+window.toggleGraph = function() {
+  showGraph = !showGraph;
+  $('graph-panel').classList.toggle('open', showGraph);
+  const t=$('tog-graph'); if(t)t.classList.toggle('on',showGraph);
+  if (showGraph) renderGraph();
+};
+
+// ═══════════════════════════════════════════════════════════
+// FOLDER GRAPH (simple canvas tree)
+// ═══════════════════════════════════════════════════════════
+function renderGraph() {
+  const canvas = $('graph-canvas');
+  if (!canvas) return;
+  const w = canvas.offsetWidth, h = canvas.offsetHeight;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,w,h);
+
+  const nodes = [
+    {label:'gmuxtest', x:w/2, y:40,  color:'#818cf8', root:true},
+    {label:'src-tauri',x:w*0.3,y:120,color:'#94a3b8'},
+    {label:'src/',     x:w*0.7,y:120,color:'#94a3b8'},
+    {label:'lib.rs',   x:w*0.15,y:210,color:'#67e8f9'},
+    {label:'main.rs',  x:w*0.42,y:210,color:'#67e8f9'},
+    {label:'index.html',x:w*0.6,y:210,color:'#34d399'},
+    {label:'main.js',  x:w*0.8,y:210,color:'#34d399'},
+    {label:'shared/',  x:w/2,  y:300,color:'#a78bfa'},
+  ];
+  const edges = [[0,1],[0,2],[1,2],[1,3],[1,4],[2,5],[2,6],[2,7]];
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  edges.forEach(([a,b])=>{
+    ctx.beginPath();
+    ctx.moveTo(nodes[a].x, nodes[a].y);
+    ctx.lineTo(nodes[b].x, nodes[b].y);
+    ctx.stroke();
+  });
+
+  nodes.forEach(n => {
+    ctx.beginPath();
+    ctx.arc(n.x,n.y,n.root?10:7,0,Math.PI*2);
+    ctx.fillStyle = n.color;
+    ctx.fill();
+    ctx.fillStyle = '#e2e8f5';
+    ctx.font = n.root?'bold 11px sans-serif':'10px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(n.label, n.x, n.y + (n.root?24:20));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// OPTIONS PANEL
+// ═══════════════════════════════════════════════════════════
+window.toggleOpts = function() { $('opts-overlay').classList.toggle('open'); };
+window.closeOptsOutside = function(e) {
+  if (e.target===$('opts-overlay')) window.toggleOpts();
+};
+window.setCol = function(v,val) { document.documentElement.style.setProperty(v,val); };
+window.setGridMode = function(val) { gridMode=val; render(); };
+window.setSens = function(val) {
+  swipeSens = parseInt(val);
+  if (engine) engine.config.swipeVelocityThreshold = 0.022/swipeSens*3;
+};
+
+window.resetCols = function() {
+  const d={'--bg':'#111827','--surface':'#1a2332','--surface2':'#243044','--card':'#1e2d42',
+           '--card-hi':'#253452','--accent':'#818cf8','--text':'#e2e8f5','--waiting':'#f87171',
+           '--working':'#34d399','--permission':'#fb923c','--done':'#60a5fa'};
+  Object.entries(d).forEach(([k,v])=>document.documentElement.style.setProperty(k,v));
+  activePreset=-1; renderPresets();
+};
+
+// Theme presets
+function renderPresets() {
+  $('preset-grid').innerHTML = PRESETS.map((p,i)=>`
+    <div class="preset${i===activePreset?' active-preset':''}" onclick="applyPreset(${i})">
+      <div class="preset-swatch">
+        <span class="preset-dot" style="background:${p.vars['--bg']}"></span>
+        <span class="preset-dot" style="background:${p.vars['--accent']}"></span>
+        <span class="preset-dot" style="background:${p.vars['--working']}"></span>
+      </div>
+      <span class="preset-name">${p.name}</span>
+    </div>`).join('');
+}
+
+window.applyPreset = function(i) {
+  activePreset=i;
+  const p=PRESETS[i];
+  Object.entries(p.vars).forEach(([k,v])=>document.documentElement.style.setProperty(k,v));
+  renderPresets();
+};
+
+// ═══════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════
+let _toastTimer;
+function toast(msg) {
+  const el=$('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>el.classList.remove('show'),1800);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MOCK STATE EVOLUTION
+// ═══════════════════════════════════════════════════════════
+// (uses shared/mock-data.js initDataSource which calls startMockEvolution)
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+renderPresets();
+renderGestureMap();
+render();
+setTimeout(()=>openChat(selectedId),80);
+
+// Connect to data source (Tauri or mock evolution)
+const src = await initDataSource(panes, updated => { panes=updated; render(); if(chatOpen)updateChatHead(); });
+$('sb-src').textContent = src==='tauri' ? '● tauri live' : '● mock';
+$('sb-src').style.color  = src==='tauri' ? 'var(--accent)' : 'var(--muted)';
+</script>

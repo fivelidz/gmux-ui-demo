@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux · Projector Mode</title>
+<style>
+:root {
+  --bg:         #05070b;
+  --surface:    #08090e;
+  --card:       #0b0d14;
+  --border:     rgba(255,255,255,0.06);
+  --border-hi:  rgba(255,255,255,0.12);
+  --muted:      #5a6472;
+  --text:       #f0f4f8;
+  --accent:     #7c6ff7;
+  --waiting:    #f04040;
+  --working:    #22d36a;
+  --permission: #f97316;
+  --done:       #4090f0;
+  --error:      #f04040;
+  --idle:       #3a4250;
+  --glass-bg:   rgba(8,9,14,0.88);
+  --glass-blur: blur(20px) saturate(160%) brightness(1.03);
+  --glass-border: 1px solid rgba(255,255,255,0.07);
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body {
+  width:100%; height:100%;
+  background: var(--bg); color: var(--text);
+  font-family: 'SF Pro Display','SF Pro Text','Inter',system-ui,sans-serif;
+  overflow: hidden; user-select: none;
+}
+
+/* ── Shell ── */
+#app {
+  display: grid;
+  grid-template-rows: 64px 1fr 44px;
+  height: 100vh;
+}
+
+/* ── Topbar ── */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 40px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: var(--glass-border);
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 18px; font-weight: 800; letter-spacing: -0.04em;
+}
+.brand-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 14px var(--accent);
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+@keyframes pulse-glow { 0%,100%{opacity:.6;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
+@keyframes working-dot { 0%,100%{box-shadow:0 0 0 0 rgba(34,211,106,.5)}50%{box-shadow:0 0 0 4px rgba(34,211,106,0)} }
+.brand-sub { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+#topbar-right {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; color: var(--muted);
+}
+.proj-btn {
+  padding: 8px 20px; border-radius: 8px;
+  border: var(--glass-border); background: rgba(255,255,255,0.04);
+  color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 140ms ease;
+}
+.proj-btn:hover { color: var(--text); background: rgba(255,255,255,0.08); border-color: var(--border-hi); }
+.proj-btn.active { color: #b3acff; border-color: rgba(124,111,247,0.4); background: rgba(124,111,247,0.12); }
+
+/* ── Main stage ── */
+#main {
+  display: flex; align-items: stretch; overflow: hidden;
+}
+
+/* Mini nav strip (left) */
+#nav-strip {
+  width: 72px; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 20px 0; gap: 10px;
+  background: var(--surface); border-right: var(--glass-border);
+}
+.nav-agent-dot {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 160ms ease;
+  border: 2px solid transparent; position: relative;
+}
+.nav-agent-dot:hover { border-color: var(--border-hi); }
+.nav-agent-dot.active { border-color: var(--accent); background: rgba(124,111,247,0.1); }
+.nav-dot-inner { width: 10px; height: 10px; border-radius: 50%; }
+.nav-agent-number {
+  position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; font-weight: 700; color: var(--muted);
+}
+
+/* Focus card */
+#focus-area {
+  flex: 1; padding: 32px 40px;
+  display: flex; flex-direction: column; gap: 24px;
+  overflow: auto; scrollbar-width: none;
+}
+#focus-area::-webkit-scrollbar { display: none; }
+
+/* ── Focus card ── */
+#focus-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 36px;
+  position: relative; overflow: hidden;
+  flex: 1; display: flex; flex-direction: column; gap: 24px;
+  transition: border-color 300ms ease, box-shadow 300ms ease;
+}
+#focus-card::before {
+  content: '';
+  position: absolute; top:0; left:0; right:0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+}
+#focus-card[data-state="waiting"]    { border-color:rgba(240,64,64,.25);  box-shadow:0 0 0 1px rgba(240,64,64,.1), 0 0 60px rgba(240,64,64,.05); }
+#focus-card[data-state="working"]    { border-color:rgba(34,211,106,.2);  box-shadow:0 0 0 1px rgba(34,211,106,.08); }
+#focus-card[data-state="permission"] { border-color:rgba(249,115,22,.35); box-shadow:0 0 0 1px rgba(249,115,22,.15), 0 0 60px rgba(249,115,22,.07); animation:perm-pulse 2s ease-in-out infinite; }
+@keyframes perm-pulse { 0%,100%{box-shadow:0 0 0 1px rgba(249,115,22,.15),0 0 50px rgba(249,115,22,.07)}50%{box-shadow:0 0 0 1px rgba(249,115,22,.3),0 0 70px rgba(249,115,22,.13)} }
+#focus-card[data-state="done"]  { border-color:rgba(64,144,240,.18); }
+#focus-card[data-state="error"] { border-color:rgba(240,64,64,.4); box-shadow:0 0 0 1px rgba(240,64,64,.2),0 0 60px rgba(240,64,64,.1); }
+
+/* Card header */
+.fc-header {
+  display: flex; align-items: center; gap: 16px;
+}
+.fc-state-dot {
+  width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+  transition: all 300ms ease;
+}
+.fc-name {
+  font-size: 32px; font-weight: 800; letter-spacing: -0.04em;
+  color: var(--text); flex: 1;
+}
+.fc-state-badge {
+  font-size: 14px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 6px 16px; border-radius: 8px; flex-shrink: 0;
+}
+.fc-perm-btn {
+  font-size: 16px; font-weight: 700; padding: 8px 20px; border-radius: 8px;
+  border: 2px solid rgba(249,115,22,.5); background: rgba(249,115,22,.15);
+  color: #fb923c; cursor: pointer; font-family: inherit; transition: all 140ms ease;
+}
+.fc-perm-btn:hover { background: rgba(249,115,22,.28); }
+
+/* Progress bar */
+.fc-progress { }
+.fc-progress-label {
+  font-size: 14px; font-weight: 600; color: var(--muted);
+  margin-bottom: 10px; display: flex; justify-content: space-between;
+}
+.fc-progress-label .done { color: var(--text); font-size: 18px; font-weight: 800; }
+.fc-track { height: 6px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; }
+.fc-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width 600ms cubic-bezier(.4,0,.2,1); }
+.fc-fill.working { background: var(--working); }
+
+/* Metrics */
+.fc-metrics {
+  display: flex; gap: 40px;
+}
+.fc-metric .label { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px; }
+.fc-metric .value { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.fc-metric .value.hot { color: var(--waiting); }
+
+/* Current activity */
+.fc-activity {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-radius: 10px;
+  background: rgba(255,255,255,0.025); border: 1px solid var(--border);
+  font-size: 16px; font-weight: 500; color: var(--muted);
+  min-height: 52px;
+}
+.fa-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+.fa-dot.working { background: var(--working); animation: act-blink 1s ease-in-out infinite; }
+@keyframes act-blink { 0%,100%{opacity:1}50%{opacity:.35} }
+.fa-text { color: var(--text); }
+
+/* Mini fleet strip at bottom of focus */
+#mini-fleet {
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.mini-card {
+  flex: 1; min-width: 140px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px;
+  cursor: pointer; transition: all 140ms ease;
+  display: flex; align-items: center; gap: 8px;
+}
+.mini-card:hover { border-color: var(--border-hi); }
+.mini-card.active { border-color: rgba(124,111,247,.4); background: rgba(124,111,247,.06); }
+.mini-card[data-state="waiting"]    { border-color: rgba(240,64,64,.2); }
+.mini-card[data-state="permission"] { border-color: rgba(249,115,22,.3); }
+.mc-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+.mc-name { font-size:14px;font-weight:700;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.mc-state { font-size:11px;font-weight:600;color:var(--muted); }
+
+/* ── Status bar ── */
+#statusbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 40px;
+  background: var(--surface); border-top: var(--glass-border);
+  font-size: 13px; color: var(--muted);
+}
+#statusbar-left { display: flex; gap: 20px; align-items: center; }
+#statusbar-right { display: flex; gap: 20px; align-items: center; }
+.sb-gesture-hint {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600;
+}
+.sb-gesture-hint .gesture-key {
+  background: rgba(255,255,255,.06); border: 1px solid var(--border);
+  border-radius: 5px; padding: 2px 8px; font-size: 12px;
+}
+.sb-sep { width:1px; height:16px; background:var(--border); }
+
+/* ── Gesture indicator (top right overlay when active) ── */
+#gesture-pill {
+  position: fixed; top: 78px; right: 40px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  border-radius: 10px; padding: 10px 18px;
+  display: flex; gap: 16px; align-items: center;
+  opacity: 0; transition: opacity 250ms ease;
+  pointer-events: none;
+}
+#gesture-pill.visible { opacity: 1; }
+.gp-hand { display: flex; align-items: center; gap: 8px; }
+.gp-role { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.gp-role.right { color: var(--working); }
+.gp-role.left  { color: var(--accent); }
+.gp-name { font-size: 15px; font-weight: 700; color: var(--text); }
+.gp-sep { width:1px; height:24px; background:var(--border); }
+
+/* ── Action flash ── */
+#action-flash {
+  position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+  font-size: 20px; font-weight: 800; letter-spacing: -0.02em;
+  padding: 12px 30px; border-radius: 12px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  opacity: 0; transition: opacity 200ms ease;
+  pointer-events: none; white-space: nowrap;
+}
+#action-flash.show { opacity: 1; }
+
+/* State colours */
+.s-waiting    { background:rgba(240,64,64,.12);  color:var(--waiting); }
+.s-working    { background:rgba(34,211,106,.12); color:var(--working); }
+.s-permission { background:rgba(249,115,22,.14); color:var(--permission); }
+.s-done       { background:rgba(64,144,240,.12); color:var(--done); }
+.s-error      { background:rgba(240,64,64,.15);  color:var(--error); }
+.s-idle       { background:rgba(58,66,80,.2);    color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      gmux
+      <span class="brand-sub">projector</span>
+    </div>
+    <div id="topbar-right">
+      <button class="proj-btn active" id="btn-gesture" onclick="toggleGestureMode()">✋ Gesture On</button>
+      <button class="proj-btn" id="btn-voice" onclick="toggleVoice()">🎙 Voice</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="nav-strip"></div>
+    <div id="focus-area">
+      <div id="focus-card"></div>
+      <div id="mini-fleet"></div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <div id="statusbar-left">
+      <span id="sb-session">session · default</span>
+      <div class="sb-sep"></div>
+      <span id="sb-count"></span>
+    </div>
+    <div id="statusbar-right">
+      <div class="sb-gesture-hint"><span class="gesture-key">→</span><span>next agent</span></div>
+      <div class="sb-sep"></div>
+      <div class="sb-gesture-hint"><span class="gesture-key">☝</span><span>voice toggle</span></div>
+      <div class="sb-sep"></div>
+      <div class="sb-gesture-hint"><span class="gesture-key">✌+</span><span>jump waiting</span></div>
+      <div class="sb-sep"></div>
+      <div class="sb-gesture-hint"><span class="gesture-key">👍</span><span>approve</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="gesture-pill">
+  <div class="gp-hand">
+    <span class="gp-role right">R</span>
+    <span class="gp-name" id="gp-right">—</span>
+  </div>
+  <div class="gp-sep"></div>
+  <div class="gp-hand">
+    <span class="gp-role left">L</span>
+    <span class="gp-name" id="gp-left">—</span>
+  </div>
+</div>
+
+<div id="action-flash"></div>
+
+<script>
+// ── Mock data ──────────────────────────────────────────────────────────
+const AGENTS = [
+  { id:'a1', name:'volkus',   state:'working',    todos:[6,8], ram:'1.2 GB', tokens:'847k', tool:'bash: node build.js',    window:1 },
+  { id:'a2', name:'sadiya',   state:'waiting',    todos:[3,5], ram:'780 MB', tokens:'312k', tool:null,                     window:2 },
+  { id:'a3', name:'research', state:'permission', todos:[2,4], ram:'540 MB', tokens:'1.1m', tool:'edit: src/main.rs',       window:3 },
+  { id:'a4', name:'deepseek', state:'working',    todos:[7,9], ram:'2.1 GB', tokens:'2.3m', tool:'glob: src/**/*.ts',       window:4 },
+  { id:'a5', name:'deploy',   state:'done',       todos:[5,5], ram:'3.4 GB', tokens:'430k', tool:null,                     window:5 },
+  { id:'a6', name:'gemini',   state:'idle',       todos:[0,0], ram:'220 MB', tokens:'0',    tool:null,                     window:6 },
+];
+const SC = { waiting:'#f04040', working:'#22d36a', permission:'#f97316', done:'#4090f0', error:'#f04040', idle:'#3a4250' };
+const col = s => SC[s]||'#3a4250';
+let selectedId = 'a1';
+let voiceOn = false;
+
+function render() {
+  renderNav(); renderFocus(); renderMiniFleet(); renderStatus();
+}
+
+function renderNav() {
+  document.getElementById('nav-strip').innerHTML = AGENTS.map(a =>
+    `<div class="nav-agent-dot ${a.id===selectedId?'active':''}" onclick="select('${a.id}')">
+      <div class="nav-dot-inner" style="background:${col(a.state)};${a.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></div>
+      <span class="nav-agent-number">${a.window}</span>
+    </div>`
+  ).join('');
+}
+
+function renderFocus() {
+  const a = AGENTS.find(x=>x.id===selectedId);
+  if (!a) return;
+  const card = document.getElementById('focus-card');
+  card.dataset.state = a.state;
+  const done = a.todos[0], total = a.todos[1];
+  const pct  = total > 0 ? (done/total*100).toFixed(0) : 0;
+  const permBtn = a.state==='permission'
+    ? `<button class="fc-perm-btn" onclick="approvePerm('${a.id}')">! Approve</button>` : '';
+  const badge = a.state !== 'permission'
+    ? `<span class="fc-state-badge s-${a.state}">${a.state}</span>` : '';
+  card.innerHTML = `
+    <div class="fc-header">
+      <span class="fc-state-dot" style="background:${col(a.state)};${a.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></span>
+      <span class="fc-name">${a.name}</span>
+      ${permBtn || badge}
+    </div>
+    ${total>0?`<div class="fc-progress">
+      <div class="fc-progress-label">
+        <span>Todos</span>
+        <span><span class="done">${done}</span> / ${total}</span>
+      </div>
+      <div class="fc-track"><div class="fc-fill ${a.state==='working'?'working':''}" style="width:${pct}%"></div></div>
+    </div>`:''}
+    <div class="fc-metrics">
+      <div class="fc-metric">
+        <div class="label">RAM</div>
+        <div class="value ${parseFloat(a.ram)>2?'hot':''}">${a.ram}</div>
+      </div>
+      <div class="fc-metric">
+        <div class="label">Tokens</div>
+        <div class="value">${a.tokens}</div>
+      </div>
+      <div class="fc-metric">
+        <div class="label">Window</div>
+        <div class="value">${a.window}</div>
+      </div>
+    </div>
+    <div class="fc-activity">
+      <span class="fa-dot ${a.state==='working'?'working':''}"></span>
+      <span class="fa-text">${a.tool || (a.state==='idle'?'idle — no activity':'—')}</span>
+    </div>`;
+}
+
+function renderMiniFleet() {
+  document.getElementById('mini-fleet').innerHTML = AGENTS
+    .filter(a => a.id !== selectedId)
+    .map(a => `<div class="mini-card ${a.id===selectedId?'active':''}" data-state="${a.state}" onclick="select('${a.id}')">
+      <span class="mc-dot" style="background:${col(a.state)}"></span>
+      <span class="mc-name">${a.name}</span>
+      <span class="mc-state">${a.state}</span>
+    </div>`).join('');
+}
+
+function renderStatus() {
+  const counts = {};
+  AGENTS.forEach(a => counts[a.state]=(counts[a.state]||0)+1);
+  document.getElementById('sb-count').textContent = `${AGENTS.length} agents`;
+}
+
+function select(id) { selectedId = id; render(); }
+function approvePerm(id) {
+  const a = AGENTS.find(x=>x.id===id);
+  if (a) { a.state='working'; a.tool='bash: approved...'; render(); }
+}
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  document.getElementById('btn-voice').classList.toggle('active', voiceOn);
+  flash(voiceOn ? '🎙  Voice On' : '🎙  Voice Off');
+}
+
+// ── Action flash ──────────────────────────────────────────────────────
+let flashTimer = null;
+function flash(msg, color) {
+  const el = document.getElementById('action-flash');
+  el.textContent = msg;
+  el.style.color = color || 'var(--text)';
+  el.classList.add('show');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── Gesture mode toggle ───────────────────────────────────────────────
+let gestureMode = true;
+function toggleGestureMode() {
+  gestureMode = !gestureMode;
+  const btn = document.getElementById('btn-gesture');
+  btn.textContent = gestureMode ? '✋ Gesture On' : '✋ Gesture Off';
+  btn.classList.toggle('active', gestureMode);
+  flash(gestureMode ? '✋ Gesture enabled' : '✋ Gesture disabled');
+}
+
+// ── Gesture pill show/hide ────────────────────────────────────────────
+let pillTimer = null;
+function showGesturePill(right, left) {
+  const pill = document.getElementById('gesture-pill');
+  if (right) document.getElementById('gp-right').textContent = right;
+  if (left)  document.getElementById('gp-left').textContent  = left;
+  pill.classList.add('visible');
+  clearTimeout(pillTimer);
+  pillTimer = setTimeout(() => pill.classList.remove('visible'), 1800);
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const idx = AGENTS.findIndex(a=>a.id===selectedId);
+  if (e.key==='ArrowRight'||e.key==='ArrowDown') {
+    select(AGENTS[(idx+1)%AGENTS.length].id);
+    flash('→ next agent');
+    showGesturePill('SWIPE_RIGHT', null);
+  }
+  if (e.key==='ArrowLeft'||e.key==='ArrowUp') {
+    select(AGENTS[(idx-1+AGENTS.length)%AGENTS.length].id);
+    flash('← prev agent');
+    showGesturePill('SWIPE_LEFT', null);
+  }
+  if (e.key==='j'||e.key==='J') {
+    const red = AGENTS.find(a=>a.state==='waiting'||a.state==='permission');
+    if (red) { select(red.id); flash('⚡ jumped to ' + red.name, 'var(--waiting)'); showGesturePill(null, 'THREE'); }
+  }
+  if (e.key==='v'||e.key==='V') { toggleVoice(); showGesturePill(null, 'POINT'); }
+  if (e.key==='Enter'||e.key===' ') {
+    const a = AGENTS.find(x=>x.id===selectedId);
+    if (a?.state==='permission') { approvePerm(a.id); flash('✓ approved', 'var(--working)'); showGesturePill(null, 'THUMBS_UP'); }
+  }
+});
+
+// ── Mock state animation ──────────────────────────────────────────────
+setInterval(() => {
+  const a = AGENTS[Math.floor(Math.random()*AGENTS.length)];
+  if (a.state==='working'&&Math.random()>.7) { a.state=Math.random()>.5?'waiting':'done'; a.tool=null; render(); }
+  else if (a.state==='waiting'&&Math.random()>.8) { a.state='working'; a.tool='bash: running...'; render(); }
+}, 4000);
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux · Dense Terminal</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   SYSTEM B — DENSE TERMINAL
+   Design language: Zellij/Warp-inspired, pane borders, dimming,
+   Powerline segments, mode-aware colour coding.
+   Every pixel earns its place. Information-maximalist.
+   Best for: primary working display, keyboard-first users.
+═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:         #0d1117;
+  --surface:    #161b22;
+  --surface2:   #1c2330;
+  --card:       #0d1117;
+  --border:     #2a3240;
+  --border-hi:  #3d4d60;
+  --muted:      #5a6d84;
+  --text:       #cdd5e0;
+  --text-bright:#e8eef5;
+  --accent:     #6c5ce7;
+
+  --waiting:    #e84040;
+  --working:    #1db85c;
+  --permission: #e87020;
+  --done:       #3070e0;
+  --error:      #e84040;
+  --idle:       #30405a;
+
+  --mono:  'SF Mono','Fira Code','Cascadia Code','Consolas',monospace;
+  --font:  'SF Pro Text','Inter',system-ui,sans-serif;
+
+  --row-h: 28px;
+  --topbar-h: 32px;
+  --statusbar-h: 22px;
+  --sidebar-w: 200px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 12px;
+  overflow: hidden; user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── App shell ── */
+#app {
+  display: grid;
+  grid-template-rows: var(--topbar-h) 1fr var(--statusbar-h);
+  height: 100vh;
+}
+
+/* ── Topbar — Powerline-style segments ── */
+#topbar {
+  display: flex; align-items: stretch;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.tbar-drag { -webkit-app-region: drag; flex: 1; min-width: 80px; }
+
+.seg {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 14px;
+  font-family: var(--font); font-size: 11px; font-weight: 600;
+  color: var(--muted); background: var(--surface);
+  border-right: 1px solid var(--border);
+  cursor: pointer; transition: all 100ms ease; white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+.seg:hover   { color: var(--text-bright); background: var(--surface2); }
+.seg.active  { color: var(--text-bright); background: var(--surface2); border-bottom: 2px solid var(--accent); }
+.seg-icon    { font-size: 13px; }
+.seg-dot     { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+/* Mode badge */
+#mode-badge {
+  display: flex; align-items: center; padding: 0 14px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  font-family: var(--mono);
+}
+#mode-badge.mode-normal { color: #5087d0; }
+#mode-badge.mode-select { color: var(--working); }
+#mode-badge.mode-voice  { color: var(--waiting); }
+#mode-badge.mode-gesture{ color: var(--accent); }
+
+.tbar-spacer { flex: 1; -webkit-app-region: drag; }
+.tbar-right  { display: flex; align-items: stretch; margin-left: auto; }
+.tbar-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 12px; font-family: var(--font); font-size: 11px; font-weight: 600;
+  color: var(--muted); background: none; border: none; border-left: 1px solid var(--border);
+  cursor: pointer; transition: all 100ms ease; white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+.tbar-btn:hover  { color: var(--text-bright); background: var(--surface2); }
+.tbar-btn.active { color: var(--accent); background: rgba(108,92,231,0.10); }
+.tbar-btn.listening { color: var(--waiting); background: rgba(232,64,64,0.10); animation: tbar-listen 1s ease-in-out infinite; }
+@keyframes tbar-listen { 0%,100%{border-left-color:rgba(232,64,64,.2)} 50%{border-left-color:rgba(232,64,64,.6)} }
+#gold-display { color: #c9a227; font-family: var(--mono); font-size: 11px; font-weight: 700; }
+
+/* ── Main area ── */
+#main { display: flex; overflow: hidden; }
+
+/* ── Sidebar: agent list — zellij style ── */
+#sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#sidebar-header {
+  height: 26px; display: flex; align-items: center; padding: 0 12px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--border); background: var(--surface2);
+  gap: 6px;
+}
+#sidebar-header .sh-count { color: var(--text); font-family: var(--mono); }
+
+#agent-list { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+.agent-row {
+  display: flex; align-items: center; gap: 0;
+  height: var(--row-h); cursor: pointer;
+  border-bottom: 1px solid rgba(42,50,64,0.6);
+  transition: background 80ms ease; position: relative;
+  overflow: hidden;
+}
+.agent-row:hover { background: var(--surface2); }
+.agent-row.selected {
+  background: rgba(108,92,231,0.12);
+  border-right: 2px solid var(--accent);
+}
+.agent-row.voice-target { background: rgba(232,64,64,0.06); }
+
+/* Left colour bar */
+.ar-bar {
+  width: 3px; height: 100%; flex-shrink: 0;
+  transition: background 200ms ease;
+}
+.ar-icon { width: 26px; text-align: center; font-size: 11px; flex-shrink: 0; color: var(--muted); }
+.ar-name {
+  flex: 1; font-size: 12px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 4px;
+}
+.ar-win {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  color: var(--muted); padding: 0 6px; flex-shrink: 0;
+}
+.ar-badge {
+  font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 3px;
+  margin-right: 6px; flex-shrink: 0; font-family: var(--mono);
+  letter-spacing: 0.03em;
+}
+.ar-badge.permission { background: rgba(232,112,32,.18); color: var(--permission); }
+.ar-badge.waiting    { background: rgba(232,64,64,.15); color: var(--waiting); }
+.ar-badge.working    { background: rgba(29,184,92,.12); color: var(--working); }
+.ar-badge.error      { background: rgba(232,64,64,.2);  color: var(--error); }
+
+/* Sidebar RAM mini-bar */
+.ar-ram {
+  width: 32px; height: 3px; background: rgba(255,255,255,0.05);
+  border-radius: 2px; overflow: hidden; flex-shrink: 0; margin-right: 8px;
+}
+.ar-ram-fill { height: 100%; border-radius: 2px; transition: width 400ms ease; }
+
+/* Sidebar footer: sort + filter */
+#sidebar-footer {
+  border-top: 1px solid var(--border); padding: 6px 10px;
+  display: flex; gap: 4px; background: var(--surface2);
+}
+.sf-btn {
+  flex: 1; padding: 3px; border-radius: 4px; font-size: 10px; font-weight: 700;
+  font-family: var(--font); color: var(--muted); background: none; border: none; cursor: pointer;
+  transition: all 100ms ease; text-align: center;
+}
+.sf-btn:hover  { color: var(--text-bright); background: rgba(255,255,255,0.05); }
+.sf-btn.active { color: var(--accent); background: rgba(108,92,231,0.12); }
+
+/* ── Content: pane grid ── */
+#content {
+  flex: 1; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+/* Content toolbar */
+#content-toolbar {
+  height: 26px; display: flex; align-items: center; gap: 0;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none;
+}
+#content-toolbar::-webkit-scrollbar { display: none; }
+
+/* Window tabs — dense */
+.win-tab {
+  display: flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 12px;
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  border-right: 1px solid var(--border);
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: all 100ms ease;
+}
+.win-tab:hover { color: var(--text-bright); background: var(--surface2); }
+.win-tab.active { color: var(--text-bright); background: var(--card); }
+.win-tab.active::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+}
+.wt-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.wt-num { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+/* ── Pane grid ── */
+#pane-area {
+  flex: 1; overflow: auto; padding: 0;
+  display: flex; flex-direction: column; gap: 0;
+}
+#pane-grid {
+  display: grid; gap: 1px; background: var(--border);
+  height: 100%;
+}
+#pane-grid.layout-1 { grid-template-columns: 1fr; }
+#pane-grid.layout-2 { grid-template-columns: 1fr 1fr; }
+#pane-grid.layout-3 { grid-template-columns: 1fr 1fr 1fr; }
+#pane-grid.layout-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+#pane-grid.layout-6 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+#pane-grid.layout-8 { grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+/* ── Pane ── */
+.pane {
+  background: var(--card);
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative;
+  transition: filter 200ms ease, opacity 200ms ease;
+}
+/* Dimming: inactive panes fade back — key Zellij/iTerm feature */
+.pane.inactive {
+  filter: brightness(0.72) saturate(0.75);
+  opacity: 0.85;
+}
+.pane.selected { filter: none; opacity: 1; }
+
+/* Pane header — always visible, 26px */
+.pane-header {
+  height: 26px; display: flex; align-items: center; gap: 6px;
+  padding: 0 10px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 600; flex-shrink: 0;
+  user-select: none;
+  position: relative;
+}
+.pane.selected .pane-header {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--accent);
+}
+.ph-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ph-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.ph-win  { font-family: var(--mono); font-size: 10px; color: var(--muted); flex-shrink: 0; }
+.ph-tool {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  background: rgba(255,255,255,0.04); border-radius: 3px; padding: 1px 5px;
+  flex-shrink: 0; overflow: hidden; max-width: 80px; text-overflow: ellipsis; white-space: nowrap;
+}
+.ph-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
+.ph-perm-btn {
+  padding: 1px 7px; border-radius: 3px; font-size: 10px; font-weight: 700;
+  cursor: pointer; border: none; font-family: var(--font); flex-shrink: 0;
+  background: rgba(232,112,32,.18); color: var(--permission);
+  border: 1px solid rgba(232,112,32,.3);
+}
+.ph-perm-btn:hover { background: rgba(232,112,32,.3); }
+
+/* Pane body: mock terminal output */
+.pane-body {
+  flex: 1; overflow: hidden; padding: 8px 10px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.55;
+  color: var(--muted); position: relative;
+}
+/* Fade bottom edge */
+.pane-body::after {
+  content: '';
+  position: absolute; bottom: 0; left: 0; right: 0; height: 40px;
+  background: linear-gradient(to bottom, transparent, var(--card));
+  pointer-events: none;
+}
+.pane-line { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.pane-line.bright { color: var(--text); }
+.pane-line.cmd    { color: #5087d0; }
+.pane-line.ok     { color: var(--working); }
+.pane-line.err    { color: var(--error); }
+.pane-line.warn   { color: var(--permission); }
+.pane-line.dim    { color: var(--muted); opacity: 0.7; }
+.pane-cursor {
+  display: inline-block; width: 7px; height: 13px; background: var(--text);
+  vertical-align: middle; animation: cursor-blink 1s step-end infinite;
+}
+@keyframes cursor-blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* Pane footer: metrics bar */
+.pane-footer {
+  height: 22px; display: flex; align-items: center; gap: 10px;
+  padding: 0 10px; background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-size: 10px; font-weight: 600; color: var(--muted); flex-shrink: 0;
+  overflow: hidden;
+}
+.pf-metric { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.pf-label  { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
+.pf-value  { color: var(--text); font-family: var(--mono); }
+.pf-value.hot { color: var(--waiting); }
+.pf-spacer { flex: 1; }
+.pf-model  { font-family: var(--mono); font-size: 9px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+.pf-todo   { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.pf-todo-track { width: 36px; height: 3px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+.pf-todo-fill  { height: 100%; border-radius: 2px; transition: width 400ms ease; }
+
+/* ── Detail panel (right side when agent selected) ── */
+#detail-panel {
+  width: 260px; flex-shrink: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#detail-panel.hidden { display: none; }
+#dp-header {
+  height: 26px; display: flex; align-items: center; padding: 0 12px; gap: 8px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--border); background: var(--surface2);
+}
+.dp-close { margin-left: auto; cursor: pointer; color: var(--muted); font-size: 14px; background: none; border: none; padding: 0; }
+.dp-close:hover { color: var(--text); }
+#dp-body { flex: 1; overflow-y: auto; padding: 12px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; display: flex; flex-direction: column; gap: 12px; }
+
+.dp-section { }
+.dp-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 6px; }
+
+/* Metric rows */
+.dp-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(42,50,64,0.5); }
+.dp-row:last-child { border-bottom: none; }
+.dp-key { font-size: 11px; color: var(--muted); }
+.dp-val { font-size: 12px; font-weight: 700; color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dp-val.hot { color: var(--waiting); }
+
+/* Horizontal bar */
+.dp-bar-wrap { margin-top: 4px; }
+.dp-bar-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+.dp-bar-track { height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
+.dp-bar-fill  { height: 100%; border-radius: 3px; transition: width 400ms ease; }
+
+/* Tool history */
+.dp-tools { display: flex; flex-wrap: wrap; gap: 3px; }
+.dp-tool { font-size: 10px; font-weight: 700; font-family: var(--mono); padding: 2px 6px; border-radius: 3px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--muted); }
+.dp-tool.latest { background: rgba(108,92,231,0.12); border-color: rgba(108,92,231,0.28); color: #9d8df0; }
+
+/* Approve/reject in detail panel */
+.dp-perm-btns { display: flex; gap: 6px; }
+.dp-perm-btn { flex: 1; padding: 7px; border-radius: 5px; font-family: var(--font); font-size: 11px; font-weight: 700; cursor: pointer; border: none; transition: all 120ms ease; }
+.dp-perm-btn.approve { background: rgba(29,184,92,.14); color: var(--working); border: 1px solid rgba(29,184,92,.3); }
+.dp-perm-btn.reject  { background: rgba(232,64,64,.11); color: var(--waiting);  border: 1px solid rgba(232,64,64,.25); }
+
+/* ── Gesture HUD ── */
+#gesture-hud {
+  position: fixed; bottom: 32px; left: calc(var(--sidebar-w) + 12px);
+  display: flex; flex-direction: column; gap: 3px;
+  opacity: 0; transition: opacity 250ms ease; pointer-events: none; z-index: 100;
+}
+#gesture-hud.visible { opacity: 1; }
+.ghud-row {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border-hi);
+  border-radius: 6px; padding: 5px 10px; min-width: 190px;
+}
+.ghud-role { font-size: 9px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; width: 30px; font-family: var(--mono); }
+.ghud-role.right { color: #4ab8d8; }
+.ghud-role.left  { color: #9d8df0; }
+.ghud-gesture { flex: 1; font-size: 12px; font-weight: 700; font-family: var(--mono); }
+.ghud-conf { width: 44px; height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+.ghud-bar  { height: 100%; border-radius: 2px; transition: width 80ms; }
+
+/* Gesture PiP */
+#gesture-pip {
+  position: fixed; bottom: 0; right: 0;
+  width: 200px; height: 113px;
+  display: none; border-radius: 8px 0 0 0;
+  overflow: hidden; border-top: 1px solid var(--border); border-left: 1px solid var(--border);
+}
+#gesture-pip.active { display: block; }
+#pip-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.45; }
+#pip-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* Action toast */
+#action-toast {
+  position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
+  background: var(--surface2); border: 1px solid var(--border-hi);
+  border-radius: 6px; padding: 6px 14px;
+  font-size: 12px; font-weight: 700; font-family: var(--mono);
+  opacity: 0; transition: opacity 140ms ease;
+  white-space: nowrap; pointer-events: none; z-index: 200;
+}
+#action-toast.show { opacity: 1; }
+
+/* ── Status bar ── */
+#statusbar {
+  display: flex; align-items: center; gap: 0;
+  background: var(--surface); border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+/* Powerline-style segments in statusbar */
+.sb-seg {
+  display: flex; align-items: center; gap: 4px;
+  height: var(--statusbar-h); padding: 0 10px;
+  font-size: 10px; font-weight: 600; font-family: var(--mono);
+  border-right: 1px solid var(--border); white-space: nowrap; flex-shrink: 0;
+}
+.sb-dot { width: 6px; height: 6px; border-radius: 50%; }
+.sb-spacer { flex: 1; border-right: none; }
+.sb-seg.waiting    { color: var(--waiting); }
+.sb-seg.working    { color: var(--working); }
+.sb-seg.permission { color: var(--permission); }
+.sb-seg.done       { color: var(--done); }
+.sb-seg.error      { color: var(--error); }
+.sb-seg.src-tauri  { color: var(--accent); }
+.sb-seg.src-mock   { color: var(--muted); }
+
+kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; font-family: var(--mono); font-size: 9px; }
+
+@keyframes working-dot { 0%,100%{box-shadow:0 0 0 0 rgba(29,184,92,.5)} 50%{box-shadow:0 0 0 3px rgba(29,184,92,0)} }
+@keyframes perm-pulse   { 0%,100%{opacity:.8} 50%{opacity:1} }
+</style>
+</head>
+<body>
+
+<!-- Gesture elements -->
+<div id="gesture-pip">
+  <video id="pip-video" autoplay playsinline muted></video>
+  <canvas id="pip-canvas"></canvas>
+</div>
+<div id="gesture-hud">
+  <div class="ghud-row">
+    <span class="ghud-role right">R</span>
+    <span class="ghud-gesture" id="ghud-right">—</span>
+    <div class="ghud-conf"><div class="ghud-bar" id="ghud-rc" style="width:0;background:#4ab8d8"></div></div>
+  </div>
+  <div class="ghud-row">
+    <span class="ghud-role left">L</span>
+    <span class="ghud-gesture" id="ghud-left">—</span>
+    <div class="ghud-conf"><div class="ghud-bar" id="ghud-lc" style="width:0;background:#9d8df0"></div></div>
+  </div>
+</div>
+<div id="action-toast"></div>
+
+<div id="app">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="tbar-drag"></div>
+    <span id="mode-badge" class="mode-normal">NORMAL</span>
+    <div class="seg active" data-view="panes" onclick="setView('panes')"><span class="seg-icon">⊞</span> Panes</div>
+    <div class="seg" data-view="fleet" onclick="setView('fleet')"><span class="seg-icon">☰</span> Fleet</div>
+    <div class="tbar-spacer"></div>
+    <div class="tbar-right">
+      <div class="tbar-btn" id="tb-detail" onclick="toggleDetail()">Detail</div>
+      <div class="tbar-btn" id="tb-gesture" onclick="toggleGesture()">✋ Gesture</div>
+      <div class="tbar-btn" id="tb-voice" onclick="toggleVoice()">🎙 Voice</div>
+      <div class="tbar-btn" id="tb-gold"><span id="gold-display">847 gp</span></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Sidebar: dense agent list -->
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <span>Agents</span>
+        <span class="sh-count" id="sh-count">0</span>
+        <span style="margin-left:auto;font-size:9px">▼ priority</span>
+      </div>
+      <div id="agent-list"></div>
+      <div id="sidebar-footer">
+        <button class="sf-btn active" id="sfb-priority" onclick="setSidebarSort('priority')">Priority</button>
+        <button class="sf-btn" id="sfb-window" onclick="setSidebarSort('window')">Window</button>
+        <button class="sf-btn" id="sfb-ram" onclick="setSidebarSort('ram')">RAM</button>
+      </div>
+    </div>
+
+    <!-- Content area -->
+    <div id="content">
+      <div id="content-toolbar" role="tablist"></div>
+      <div id="pane-area">
+        <div id="pane-grid" class="layout-4"></div>
+      </div>
+    </div>
+
+    <!-- Detail panel -->
+    <div id="detail-panel" class="hidden">
+      <div id="dp-header">
+        Detail
+        <button class="dp-close" onclick="toggleDetail()">✕</button>
+      </div>
+      <div id="dp-body"></div>
+    </div>
+
+  </div>
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <div class="sb-seg" id="sb-session">session: gmux</div>
+    <div class="sb-seg" id="sb-waiting"></div>
+    <div class="sb-seg" id="sb-working"></div>
+    <div class="sb-seg" id="sb-perm"></div>
+    <div class="sb-seg sb-spacer"></div>
+    <div class="sb-seg"><kbd>←→</kbd> nav &nbsp;<kbd>J</kbd> jump &nbsp;<kbd>D</kbd> detail &nbsp;<kbd>G</kbd> gesture &nbsp;<kbd>V</kbd> voice</div>
+    <div class="sb-seg" id="sb-src" style="color:var(--muted)">● mock</div>
+  </div>
+
+</div>
+
+<script type="module">
+import { MOCK_PANES, STATE_COLOR, STATE_LABEL, panesArray, fmtRam, fmtTokens, fmtUptime, ramPct, initDataSource } from '../../shared/mock-data.js';
+import { GestureEngine }   from '../../shared/gesture-engine.js';
+import { GestureRenderer } from '../../shared/gesture-renderer.js';
+
+// ── State ─────────────────────────────────────────────────────────────
+let panes        = JSON.parse(JSON.stringify(MOCK_PANES));
+let selectedId   = '%2';
+let voiceTarget  = '%2';
+let gestureOn    = false;
+let voiceOn      = false;
+let detailOpen   = false;
+let sidebarSort  = 'priority';
+let currentView  = 'panes';
+let engine, renderer, stream, handLandmarker, lastVT = -1;
+
+// ── Mock terminal lines per pane ──────────────────────────────────────
+const TERM_LINES = {
+  '%1': [
+    {t:'dim',  l:'$ node scripts/build.js --watch'},
+    {t:'ok',   l:'✓ Compiled gesture-engine.js (1.2s)'},
+    {t:'ok',   l:'✓ Writing src/gesture-engine.js'},
+    {t:'dim',  l:'  Watching for changes...'},
+    {t:'bright',l:'  ▌'},
+  ],
+  '%2': [
+    {t:'dim',  l:'$ opencode start --model sonnet'},
+    {t:'bright',l:'Ready for your next instruction.'},
+    {t:'dim',  l:''},
+    {t:'dim',  l:'  ▌'},
+  ],
+  '%3': [
+    {t:'cmd',  l:'$ grep -r "gesture" src/'},
+    {t:'dim',  l:'  src/gesture-engine.js:14: ...'},
+    {t:'dim',  l:'  src/main.js:302: ...'},
+    {t:'warn', l:'⚠ About to edit: src/main.rs — confirm?'},
+    {t:'dim',  l:'  [Press Enter to approve] ▌'},
+  ],
+  '%4': [
+    {t:'dim',  l:'$ glob "src/**/*.ts"'},
+    {t:'dim',  l:'  Scanning src/**/*.ts...'},
+    {t:'dim',  l:'  Found 47 files'},
+    {t:'dim',  l:'  Processing...'},
+    {t:'bright',l:'  ▌'},
+  ],
+  '%5': [
+    {t:'cmd',  l:'$ npm run build && npm run deploy'},
+    {t:'ok',   l:'✓ Build passed (3.4s)'},
+    {t:'ok',   l:'✓ Deployment complete.'},
+    {t:'ok',   l:'Build passed.'},
+  ],
+  '%6': [
+    {t:'dim',  l:'$ zsh'},
+    {t:'dim',  l:'  ~'},
+    {t:'dim',  l:'  ▌'},
+  ],
+  '%7': [
+    {t:'cmd',  l:'$ read docs/GESTURES.md'},
+    {t:'dim',  l:'  Reading docs/GESTURES.md...'},
+    {t:'dim',  l:'  [1/3] Processing...'},
+    {t:'bright',l:'  ▌'},
+  ],
+  '%8': [
+    {t:'cmd',  l:'$ node build.js'},
+    {t:'err',  l:'Error: Cannot find module \'./config\''},
+    {t:'err',  l:'    at Object.<anonymous> (build.js:3:20)'},
+    {t:'err',  l:'✗ Exit code 1'},
+  ],
+};
+
+// ── Render ─────────────────────────────────────────────────────────────
+function render() {
+  const arr = sortedArr();
+  renderSidebar(arr);
+  renderTabs(arr);
+  renderPanes(arr);
+  renderStatusBar(arr);
+  if (detailOpen) renderDetail(panes[selectedId]);
+}
+
+function sortedArr() {
+  const arr = panesArray(panes);
+  if (sidebarSort === 'window') return [...arr].sort((a,b) => a.window_index - b.window_index);
+  if (sidebarSort === 'ram')    return [...arr].sort((a,b) => (b.ram_mb||0) - (a.ram_mb||0));
+  return arr; // priority
+}
+
+function renderSidebar(arr) {
+  document.getElementById('sh-count').textContent = arr.length;
+  const list = document.getElementById('agent-list');
+  list.innerHTML = arr.map(p => {
+    const col  = STATE_COLOR[p.state] || STATE_COLOR.idle;
+    const rPct = ramPct(p.ram_mb || 0);
+    const rCol = rPct > 80 ? 'var(--waiting)' : rPct > 60 ? 'var(--permission)' : col;
+    const badge = (p.state !== 'idle' && p.state !== 'not_started' && p.state !== 'done')
+      ? `<span class="ar-badge ${p.state}">${p.state === 'sub_permission' ? '^!' : STATE_LABEL[p.state]}</span>` : '';
+    const dotStyle = p.state === 'working' ? 'animation:working-dot 1.4s ease-in-out infinite' : '';
+    return `<div class="agent-row ${p.pane_id===selectedId?'selected':''} ${p.pane_id===voiceTarget&&voiceOn?'voice-target':''}"
+      onclick="select('${p.pane_id}')">
+      <div class="ar-bar" style="background:${col}"></div>
+      <span class="ar-win">${p.window_index}</span>
+      <span class="ar-name">${p.window_name}</span>
+      ${badge}
+      <div class="ar-ram"><div class="ar-ram-fill" style="width:${rPct}%;background:${rCol}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderTabs(arr) {
+  const tb = document.getElementById('content-toolbar');
+  tb.innerHTML = arr.map(p => {
+    const col = STATE_COLOR[p.state] || STATE_COLOR.idle;
+    const dotStyle = p.state === 'working' ? 'animation:working-dot 1.4s ease-in-out infinite' : '';
+    return `<div class="win-tab ${p.pane_id===selectedId?'active':''}" onclick="select('${p.pane_id}')">
+      <span class="wt-dot" style="background:${col};${dotStyle}"></span>
+      <span class="wt-num">${p.window_index}</span>
+      ${p.window_name}
+    </div>`;
+  }).join('');
+}
+
+function renderPanes(arr) {
+  const grid = document.getElementById('pane-grid');
+  const n = Math.min(arr.length, 8);
+  const layoutN = [1,1,2,3,4,4,6,6,8][n] || 4;
+  grid.className = `layout-${layoutN}`;
+
+  grid.innerHTML = arr.slice(0, layoutN).map(p => {
+    const col   = STATE_COLOR[p.state] || STATE_COLOR.idle;
+    const rPct  = ramPct(p.ram_mb || 0);
+    const cPct  = p.cpu_pct || 0;
+    const done  = p.todo_done, total = p.todo_total;
+    const pct   = total > 0 ? (done/total*100).toFixed(0) : 0;
+    const rCol  = rPct > 80 ? 'var(--waiting)' : rPct > 60 ? 'var(--permission)' : 'var(--cyan)';
+    const cCol  = cPct > 80 ? 'var(--waiting)' : cPct > 60 ? 'var(--permission)' : 'var(--working)';
+    const lines = TERM_LINES[p.pane_id] || [{t:'dim',l:'— no output —'}];
+    const isSelected = p.pane_id === selectedId;
+
+    const permBtn = (p.state==='permission'||p.state==='sub_permission')
+      ? `<button class="ph-perm-btn" onclick="event.stopPropagation();approvePerm('${p.pane_id}')">! Approve</button>` : '';
+    const badge = (p.state!=='permission'&&p.state!=='sub_permission'&&p.state!=='idle'&&p.state!=='not_started')
+      ? `<span class="ph-badge bg-${p.state}">${STATE_LABEL[p.state]}</span>` : '';
+
+    return `<div class="pane ${isSelected?'selected':'inactive'}" onclick="select('${p.pane_id}')" data-id="${p.pane_id}">
+      <div class="pane-header">
+        <span class="ph-dot" style="background:${col};${p.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></span>
+        <span class="ph-name">${p.window_name}</span>
+        <span class="ph-win">${p.window_index}</span>
+        ${p.current_tool ? `<span class="ph-tool">${p.current_tool}</span>` : ''}
+        ${permBtn || badge}
+      </div>
+      <div class="pane-body">
+        ${lines.map(ln =>
+          `<div class="pane-line ${ln.t}">${ln.l === '  ▌' ? '  <span class="pane-cursor"></span>' : ln.l}</div>`
+        ).join('')}
+      </div>
+      <div class="pane-footer">
+        <span class="pf-metric"><span class="pf-label">RAM</span>&nbsp;<span class="pf-value ${rPct>70?'hot':''}">${fmtRam(p.ram_mb)}</span></span>
+        <span class="pf-metric"><span class="pf-label">CPU</span>&nbsp;<span class="pf-value ${cPct>70?'hot':''}">${cPct}%</span></span>
+        <span class="pf-metric"><span class="pf-label">tok</span>&nbsp;<span class="pf-value">${fmtTokens((p.token_in||0)+(p.token_out||0))}</span></span>
+        <span class="pf-spacer"></span>
+        ${total>0?`<span class="pf-todo"><span class="pf-label">${done}/${total}</span><div class="pf-todo-track"><div class="pf-todo-fill" style="width:${pct}%;background:${col}"></div></div></span>`:''}
+        ${p.model?`<span class="pf-model">${p.model}</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderStatusBar(arr) {
+  const c = {waiting:0,working:0,permission:0,error:0};
+  arr.forEach(p => { if(c[p.state]!==undefined) c[p.state]++; });
+  const ss = document.getElementById('sb-waiting');
+  const sw = document.getElementById('sb-working');
+  const sp = document.getElementById('sb-perm');
+  ss.textContent = c.waiting > 0 ? `${c.waiting} waiting` : '';
+  ss.style.display = c.waiting > 0 ? '' : 'none';
+  sw.textContent = c.working > 0 ? `${c.working} working` : '';
+  sw.style.display = c.working > 0 ? '' : 'none';
+  sp.textContent = c.permission > 0 ? `${c.permission} pending` : '';
+  sp.style.display = c.permission > 0 ? '' : 'none';
+}
+
+function renderDetail(p) {
+  if (!p) { document.getElementById('dp-body').innerHTML = ''; return; }
+  const col  = STATE_COLOR[p.state] || STATE_COLOR.idle;
+  const rPct = ramPct(p.ram_mb || 0);
+  const cPct = p.cpu_pct || 0;
+  const done = p.todo_done, total = p.todo_total;
+  const pct  = total > 0 ? (done/total*100).toFixed(0) : 0;
+  const rCol = rPct > 80 ? 'var(--waiting)' : rPct > 60 ? 'var(--permission)' : 'var(--cyan)';
+  const cCol = cPct > 80 ? 'var(--waiting)' : cPct > 60 ? 'var(--permission)' : 'var(--working)';
+  const tools = (p.tool_history || []).slice(-6);
+
+  const permBtns = (p.state==='permission'||p.state==='sub_permission') ? `
+    <div class="dp-perm-btns">
+      <button class="dp-perm-btn approve" onclick="approvePerm('${p.pane_id}')">✓ Approve</button>
+      <button class="dp-perm-btn reject"  onclick="rejectPerm('${p.pane_id}')">✗ Reject</button>
+    </div>` : '';
+
+  document.getElementById('dp-body').innerHTML = `
+    <div class="dp-section">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0;${p.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></span>
+        <span style="font-size:14px;font-weight:800;flex:1">${p.window_name}</span>
+        <span class="ph-badge bg-${p.state}">${STATE_LABEL[p.state]}</span>
+      </div>
+      ${permBtns}
+    </div>
+    <div class="dp-section">
+      <div class="dp-section-label">Resources</div>
+      <div class="dp-bar-wrap">
+        <div class="dp-bar-label"><span>RAM</span><span class="${rPct>70?'hot':''}" style="color:${rPct>70?'var(--waiting)':'var(--text)'}">${fmtRam(p.ram_mb)}</span></div>
+        <div class="dp-bar-track"><div class="dp-bar-fill" style="width:${rPct}%;background:${rCol}"></div></div>
+      </div>
+      <div class="dp-bar-wrap" style="margin-top:8px">
+        <div class="dp-bar-label"><span>CPU</span><span>${cPct}%</span></div>
+        <div class="dp-bar-track"><div class="dp-bar-fill" style="width:${cPct}%;background:${cCol}"></div></div>
+      </div>
+      ${p.vram_mb ? `<div class="dp-row" style="margin-top:6px"><span class="dp-key">VRAM</span><span class="dp-val">${fmtRam(p.vram_mb)}</span></div>` : ''}
+    </div>
+    <div class="dp-section">
+      <div class="dp-section-label">Tokens</div>
+      <div class="dp-row"><span class="dp-key">↑ in</span><span class="dp-val">${fmtTokens(p.token_in)}</span></div>
+      <div class="dp-row"><span class="dp-key">↓ out</span><span class="dp-val">${fmtTokens(p.token_out)}</span></div>
+      <div class="dp-row"><span class="dp-key">model</span><span class="dp-val" style="font-size:10px">${p.model||'—'}</span></div>
+    </div>
+    ${total > 0 ? `
+    <div class="dp-section">
+      <div class="dp-section-label">Todos</div>
+      <div class="dp-bar-wrap">
+        <div class="dp-bar-label"><span>${done} / ${total}</span><span>${pct}%</span></div>
+        <div class="dp-bar-track"><div class="dp-bar-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+      </div>
+    </div>` : ''}
+    <div class="dp-section">
+      <div class="dp-section-label">Uptime &amp; Session</div>
+      <div class="dp-row"><span class="dp-key">uptime</span><span class="dp-val">${fmtUptime(p.uptime_s)}</span></div>
+      <div class="dp-row"><span class="dp-key">window</span><span class="dp-val">${p.window_index}</span></div>
+      <div class="dp-row"><span class="dp-key">session</span><span class="dp-val">${p.session_name}</span></div>
+    </div>
+    ${tools.length > 0 ? `
+    <div class="dp-section">
+      <div class="dp-section-label">Tool history</div>
+      <div class="dp-tools">${tools.map((t,i)=>`<span class="dp-tool ${i===tools.length-1?'latest':''}">${t}</span>`).join('')}</div>
+    </div>` : ''}
+    ${p.last_line ? `
+    <div class="dp-section">
+      <div class="dp-section-label">Last output</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.5;word-break:break-all">${p.last_line}</div>
+    </div>` : ''}
+  `;
+}
+
+// ── Controls ──────────────────────────────────────────────────────────
+function select(id) {
+  selectedId = id;
+  if (voiceOn) voiceTarget = id;
+  render();
+}
+window.select = select;
+
+window.approvePerm = id => { if(panes[id]){panes[id].state='working';panes[id].current_tool=null;render();showToast('✓ Approved');} };
+window.rejectPerm  = id => { if(panes[id]){panes[id].state='waiting';render();showToast('✗ Rejected');} };
+
+function jumpToRed() {
+  const arr = sortedArr();
+  const red = arr.find(p => p.state==='waiting'||p.state==='permission'||p.state==='sub_permission');
+  if (red) { select(red.pane_id); showToast('⚡ ' + red.window_name); }
+}
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  document.getElementById('tb-voice').classList.toggle('active', voiceOn);
+  document.getElementById('tb-voice').classList.toggle('listening', voiceOn);
+  document.getElementById('mode-badge').className = voiceOn ? 'mode-voice' : 'mode-normal';
+  document.getElementById('mode-badge').textContent = voiceOn ? 'VOICE' : 'NORMAL';
+  if (voiceOn) voiceTarget = selectedId;
+  showToast(voiceOn ? '🎙 VOICE ON' : '🎙 VOICE OFF');
+  render();
+}
+window.toggleVoice = toggleVoice;
+
+window.toggleDetail = function() {
+  detailOpen = !detailOpen;
+  document.getElementById('detail-panel').classList.toggle('hidden', !detailOpen);
+  document.getElementById('tb-detail').classList.toggle('active', detailOpen);
+  if (detailOpen) renderDetail(panes[selectedId]);
+};
+
+window.setView = function(v) {
+  currentView = v;
+  document.querySelectorAll('.seg').forEach(s => s.classList.toggle('active', s.dataset.view === v));
+};
+
+window.setSidebarSort = function(s) {
+  sidebarSort = s;
+  document.querySelectorAll('.sf-btn').forEach(b => b.classList.toggle('active', b.id === 'sfb-' + s));
+  render();
+};
+
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('action-toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const arr = sortedArr();
+  const idx = arr.findIndex(p => p.pane_id === selectedId);
+  if (e.key==='ArrowRight') select(arr[(idx+1)%arr.length].pane_id);
+  if (e.key==='ArrowLeft')  select(arr[(idx-1+arr.length)%arr.length].pane_id);
+  if (e.key==='j'||e.key==='J') jumpToRed();
+  if (e.key==='d'||e.key==='D') window.toggleDetail();
+  if (e.key==='g'||e.key==='G') window.toggleGesture();
+  if (e.key==='v'||e.key==='V') toggleVoice();
+  if (e.key==='Enter'||e.key===' ') {
+    e.preventDefault();
+    const p = panes[selectedId];
+    if (p && (p.state==='permission'||p.state==='sub_permission')) window.approvePerm(selectedId);
+  }
+});
+
+// ── Gesture ───────────────────────────────────────────────────────────
+window.toggleGesture = async function() {
+  gestureOn = !gestureOn;
+  document.getElementById('tb-gesture').classList.toggle('active', gestureOn);
+  document.getElementById('gesture-pip').classList.toggle('active', gestureOn);
+  document.getElementById('mode-badge').className = gestureOn ? 'mode-gesture' : (voiceOn ? 'mode-voice' : 'mode-normal');
+  document.getElementById('mode-badge').textContent = gestureOn ? 'GESTURE' : (voiceOn ? 'VOICE' : 'NORMAL');
+  if (gestureOn && !stream) await startCamera();
+  if (!gestureOn) document.getElementById('gesture-hud').classList.remove('visible');
+};
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video:{width:{ideal:640},height:{ideal:360},facingMode:'user'} });
+    const vid = document.getElementById('pip-video');
+    vid.srcObject = stream; await vid.play();
+    await initEngine();
+    requestAnimationFrame(gLoop);
+  } catch(e) {
+    console.warn('Camera:', e); gestureOn = false;
+    document.getElementById('tb-gesture').classList.remove('active');
+    document.getElementById('gesture-pip').classList.remove('active');
+  }
+}
+
+async function initEngine() {
+  let HandLandmarker, FilesetResolver;
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm');
+    HandLandmarker = mod.HandLandmarker; FilesetResolver = mod.FilesetResolver;
+  } catch(e) { return; }
+  const fs = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
+  handLandmarker = await HandLandmarker.createFromOptions(fs, {
+    baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate:'GPU' },
+    runningMode:'VIDEO', numHands:2,
+    minHandDetectionConfidence:0.5, minHandPresenceConfidence:0.5, minTrackingConfidence:0.5
+  });
+  engine = new GestureEngine({ gestureConfirmFrames:3, swipeVelocityThreshold:0.022, smoothingFactor:0.7 });
+  renderer = new GestureRenderer(document.getElementById('pip-canvas'), {
+    mirror:true, background:'video', showSkeleton:true, showLandmarks:true, showLabels:true,
+    showTrails:true, showPinchCircle:true, showCursor:true, showMesh:false,
+    handColors:{
+      Left: {primary:'#9d8df0',secondary:'#6c5ce7',glow:'rgba(157,141,240,0.4)',mesh:'rgba(157,141,240,0.06)'},
+      Right:{primary:'#4ab8d8',secondary:'#0088aa',glow:'rgba(74,184,216,0.4)', mesh:'rgba(74,184,216,0.06)'}
+    }
+  });
+  engine.on('frame', ({hand, gesture}) => {
+    const ne = document.getElementById(hand==='Right'?'ghud-right':'ghud-left');
+    const ce = document.getElementById(hand==='Right'?'ghud-rc':'ghud-lc');
+    if(ne) ne.textContent = gesture?.name||'—';
+    if(ce) { const c=(gesture?.confidence||0)*100; ce.style.width=c+'%'; }
+    document.getElementById('gesture-hud').classList.add('visible');
+  });
+  engine.on('gestureStart', ({hand, gesture}) => {
+    const g = gesture?.name;
+    const arr = sortedArr();
+    const idx = arr.findIndex(p => p.pane_id === selectedId);
+    if(hand==='Right') {
+      if(g==='SWIPE_RIGHT'){select(arr[(idx+1)%arr.length].pane_id);showToast('→ NEXT');}
+      if(g==='SWIPE_LEFT') {select(arr[(idx-1+arr.length)%arr.length].pane_id);showToast('← PREV');}
+    }
+    if(hand==='Left') {
+      if(g==='POINT')      { toggleVoice(); }
+      if(g==='THREE')      { jumpToRed(); }
+      if(g==='THUMBS_UP')  { const p=panes[selectedId]; if(p&&(p.state==='permission'||p.state==='sub_permission'))window.approvePerm(selectedId); }
+      if(g==='THUMBS_DOWN'){ window.rejectPerm(selectedId); }
+    }
+  });
+}
+
+function gLoop() {
+  if(!gestureOn) return;
+  requestAnimationFrame(gLoop);
+  const vid = document.getElementById('pip-video');
+  if(!handLandmarker||vid.paused||vid.currentTime===lastVT) return;
+  lastVT = vid.currentTime;
+  const gc = document.getElementById('pip-canvas');
+  gc.width = vid.videoWidth||vid.clientWidth; gc.height = vid.videoHeight||vid.clientHeight;
+  const results = handLandmarker.detectForVideo(vid, performance.now());
+  const hd = {
+    multiHandLandmarks: results.landmarks||[],
+    multiHandedness: results.handedness?.map(h=>({label:h[0]?.categoryName||'Right'}))||[]
+  };
+  engine.update(hd);
+  const E=0.12;
+  renderer.draw({...hd, multiHandLandmarks:hd.multiHandLandmarks.map(lms=>lms.map(lm=>({...lm,x:(lm.x+E)/(1+E*2),y:(lm.y+E)/(1+E*2)})))}, engine);
+}
+
+// ── Data source ───────────────────────────────────────────────────────
+const src = await initDataSource(panes, (updated) => { panes = updated; render(); });
+document.getElementById('sb-src').textContent = src==='tauri'?'● tauri':'● mock';
+document.getElementById('sb-src').className = 'sb-seg ' + (src==='tauri'?'src-tauri':'src-mock');
+
+render();
+</script>
+</body>
+</html>

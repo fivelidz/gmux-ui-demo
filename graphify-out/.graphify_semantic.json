@@ -1,0 +1,1421 @@
+{
+  "nodes": [
+    {
+      "id": "research_ui_design_gmux_project",
+      "label": "gmux Project \u2014 Gesture-First AI Agent Dashboard Terminal Multiplexer",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "line 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_macos_vibrancy_native",
+      "label": "macOS Native Vibrancy (NSVisualEffectView)",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_css_glassmorphism",
+      "label": "CSS Glassmorphism \u2014 Premium vs Cheap",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_premium_glass_formula",
+      "label": "Premium Glass CSS Formula \u2014 backdrop-filter: blur(12px) saturate(180%) brightness(1.05)",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_saturation_trick",
+      "label": "Saturation Trick \u2014 saturate(180%) is the magic ingredient",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_border_trick",
+      "label": "Glass Border Trick \u2014 1px light edge catch simulates light reflecting off glass",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_will_change_caveat",
+      "label": "will-change: transform BREAKS backdrop-filter \u2014 creates new stacking context",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_backdrop_filter_requirement",
+      "label": "backdrop-filter Requirement \u2014 background scene must be z-index lower than glass panel",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_blur_amount_reference",
+      "label": "Blur Amount Reference \u2014 2-4px frosted, 8-12px menu bar, 16-20px spotlight, 30px+ iOS",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_glass_design_tokens",
+      "label": "Glass Design Token Set \u2014 CSS custom properties for full glass system",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_gmux_rgba_values",
+      "label": "gmux Dark Theme rgba Values \u2014 titlebar, agent cards, HUD, tooltip, modal backdrop",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_warp_terminal",
+      "label": "Warp Terminal \u2014 Block-Based Output, Input Always at Bottom",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_zellij",
+      "label": "Zellij \u2014 Mode-Aware Colouring, Pane Borders with Titles, Floating Panes",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_tmux_powerline",
+      "label": "tmux + Powerline \u2014 Arrow Segment Anatomy, Colour Coding by Context",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_iterm2_dimming",
+      "label": "iTerm2 Pane Dimming \u2014 Inactive Panes at 70% Brightness (filter: brightness(0.75) saturate(0.8))",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_pane_management_principles",
+      "label": "Pane Management Design Principles \u2014 6 Rules for Terminal Multiplexer UIs",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_pane_divider_css",
+      "label": "gmux Pane Divider CSS \u2014 1px border, hover expand to 2px, invisible thick hit area",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_powerline_segment_css",
+      "label": "Powerline Segment CSS \u2014 clip-path polygon arrow connector, margin-right: -1px overlap",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_tauri_v2_vibrancy",
+      "label": "Tauri v2 Native Vibrancy \u2014 setVibrancy API hits NSVisualEffectView directly",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_tauri_transparent_titlebar",
+      "label": "Tauri v2 Transparent Titlebar \u2014 TitleBarStyle::Transparent + hidden_title(true)",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_tauri_webcam_access",
+      "label": "Tauri Webcam Access \u2014 WKWebView WebRTC works, needs NSCameraUsageDescription plist entry",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_tauri_macos_caveats",
+      "label": "Tauri v2 macOS Caveats \u2014 transparent+vibrancy together, hasShadow, resize handles, focus state",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_tauri_window_config",
+      "label": "Tauri Window Config JSON \u2014 transparent:true, titleBarStyle:Transparent, hiddenTitle:true, effects:underWindow",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_tauri_drag_region_css",
+      "label": "Tauri Drag Region CSS \u2014 -webkit-app-region: drag, height: 28px, buttons use no-drag",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_electron_vibrancy",
+      "label": "Electron vibrancy API \u2014 win.setVibrancy(type), NSVisualEffectView underneath",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_electron_vibrancy_types",
+      "label": "Electron Vibrancy Types \u2014 titlebar, sidebar, under-window, hud, popover, tooltip, content, sheet, etc",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_electron_windows_mica",
+      "label": "Electron Windows 11 \u2014 setBackgroundMaterial('mica') for long-lived, 'acrylic' for transient",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_electron_css_transparency",
+      "label": "Electron CSS Transparency \u2014 transparent:true, backgroundColor:'#00000000', CSS glass ON TOP of native vibrancy",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_electron_webcam",
+      "label": "Electron Webcam \u2014 Full Chromium access, systemPreferences.askForMediaAccess('camera') on macOS",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_electron_vs_tauri",
+      "label": "Electron vs Tauri Comparison for gmux \u2014 vibrancy, CSS, webcam, bundle size, MediaPipe WASM, PTY",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_linear_approach",
+      "label": "Linear Dashboard \u2014 One Type of Information Per Visual Level, Optical Sizing",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_vercel_pattern",
+      "label": "Vercel Dashboard Pattern \u2014 Generous Vertical Padding, Horizontal Info Layout, Muted Secondary Text",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_raycast_pattern",
+      "label": "Raycast Dense+Calm Pattern \u2014 Monochrome + Single Accent, 4px Grid, Keyboard-First",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_density_calm_principles",
+      "label": "Dense-Feel-Calm Principles \u2014 8 Rules: hierarchy via weight, status via colour, grid lock, max 3 text styles",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_agent_card_css",
+      "label": "gmux Agent Card CSS \u2014 glass panel, grid-template-rows: 28px 1fr 28px, state glow box-shadow",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_agent_state_colours",
+      "label": "gmux Agent State Colours \u2014 waiting:#ef4444, working:#22c55e, permission:#f97316, done:#3b82f6, error:#ef4444",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_status_badge_css",
+      "label": "Status Badge CSS \u2014 11px, weight 600, letter-spacing 0.04em, uppercase, rgba background at 12%",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_vercel_data_row_css",
+      "label": "Vercel Data Row CSS \u2014 grid 1fr auto auto, min-height 52px, hover rgba(255,255,255,0.03)",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_raycast_command_item_css",
+      "label": "Raycast Command Item CSS \u2014 height 44px, border-radius 8px, selected at accent 20% opacity",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_hand_tracking_edge_problem",
+      "label": "Hand Tracking Edge Problem \u2014 MediaPipe coords [0,1], hand disappears at frame edge, abrupt gesture end",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_virtual_canvas_extension",
+      "label": "Virtual Canvas Extension Technique \u2014 Track hands in canvas larger than video, EXTENSION=0.15 (15%)",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_extended_tracker_class",
+      "label": "ExtendedTracker Class \u2014 Velocity extrapolation for 12 frames, quadratic fade-out, history buffer of 16",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_extended_to_screen_fn",
+      "label": "extendedToScreen() Function \u2014 Maps [-EXTENSION, 1+EXTENSION] to [0, canvasWidth/Height]",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_wider_camera_crop",
+      "label": "Wider Camera Crop Technique \u2014 Video 130% of container, overflow hidden, center crop displayed",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_hand_opacity_fade",
+      "label": "Hand Opacity Edge Fade \u2014 Proximity fade 5% from edge, quadratic fade during extrapolation",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_extended_gesture_engine",
+      "label": "ExtendedGestureEngine \u2014 Wraps GestureEngine with ExtendedTracker, getExtendedPosition() method",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_pip_camera_css",
+      "label": "PiP Camera CSS \u2014 gesture-pip with ::after dashed ring 12px outside, edge-active pulse animation",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_edge_zone_indicator_css",
+      "label": "Edge Zone Indicator CSS \u2014 mask-image gradient fade at edges, dashed border outside PiP container",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_gmux_design_tokens",
+      "label": "gmux Full Design Token System \u2014 colours, glass, typography, layout, motion in :root",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_colour_system",
+      "label": "gmux Colour System \u2014 bg:#07090f, surface:#0d1117, card:#161b22, border:#21262d, accent:#6c5ce7",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_typography_system",
+      "label": "gmux Typography \u2014 SF Pro Text/Inter UI, SF Mono/Menlo/Fira Code, sizes 11-16px",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_motion_system",
+      "label": "gmux Motion Tokens \u2014 fast:100ms ease, mid:200ms ease, slow:300ms cubic-bezier(0.4,0,0.2,1)",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_working_pulse_animation",
+      "label": "Working State Pulse Animation \u2014 box-shadow glow cycles rgba(34,197,94,0.2) to 0.4 over 2s",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "quick reference",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "research_ui_design_pane_dimming_css",
+      "label": "Pane Dimming CSS \u2014 inactive: brightness(0.7) saturate(0.75) opacity(0.8), active: filter:none",
+      "file_type": "document",
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "quick reference",
+      "source_url": null,
+      "captured_at": "April 2026",
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_macos_vibrancy_native",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_css_glassmorphism",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_warp_terminal",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_tauri_v2_vibrancy",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_electron_vs_tauri",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_agent_card_css",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_hand_tracking_edge_problem",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_extended_tracker_class",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_project",
+      "target": "research_ui_design_gmux_design_tokens",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_macos_vibrancy_native",
+      "target": "research_ui_design_css_glassmorphism",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_macos_vibrancy_native",
+      "target": "research_ui_design_tauri_v2_vibrancy",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 1,3",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_macos_vibrancy_native",
+      "target": "research_ui_design_electron_vibrancy",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 1,4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_premium_glass_formula",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_saturation_trick",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_border_trick",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_will_change_caveat",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_backdrop_filter_requirement",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_blur_amount_reference",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_glass_design_tokens",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_css_glassmorphism",
+      "target": "research_ui_design_gmux_rgba_values",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_premium_glass_formula",
+      "target": "research_ui_design_saturation_trick",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_premium_glass_formula",
+      "target": "research_ui_design_glass_design_tokens",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_will_change_caveat",
+      "target": "research_ui_design_backdrop_filter_requirement",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_glass_design_tokens",
+      "target": "research_ui_design_gmux_design_tokens",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 1, summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_warp_terminal",
+      "target": "research_ui_design_pane_management_principles",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_zellij",
+      "target": "research_ui_design_pane_management_principles",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_tmux_powerline",
+      "target": "research_ui_design_powerline_segment_css",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_iterm2_dimming",
+      "target": "research_ui_design_pane_dimming_css",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 2, quick ref",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_iterm2_dimming",
+      "target": "research_ui_design_pane_management_principles",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_pane_management_principles",
+      "target": "research_ui_design_pane_divider_css",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_pane_management_principles",
+      "target": "research_ui_design_agent_card_css",
+      "relation": "rationale_for",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 2,5",
+      "weight": 0.85
+    },
+    {
+      "source": "research_ui_design_tauri_v2_vibrancy",
+      "target": "research_ui_design_tauri_window_config",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_tauri_v2_vibrancy",
+      "target": "research_ui_design_tauri_transparent_titlebar",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_tauri_transparent_titlebar",
+      "target": "research_ui_design_tauri_drag_region_css",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_tauri_v2_vibrancy",
+      "target": "research_ui_design_tauri_macos_caveats",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_tauri_v2_vibrancy",
+      "target": "research_ui_design_tauri_webcam_access",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_tauri_macos_caveats",
+      "target": "research_ui_design_will_change_caveat",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 1,3",
+      "weight": 0.75
+    },
+    {
+      "source": "research_ui_design_electron_vibrancy",
+      "target": "research_ui_design_electron_vibrancy_types",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_electron_vibrancy",
+      "target": "research_ui_design_electron_css_transparency",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_electron_vibrancy",
+      "target": "research_ui_design_electron_windows_mica",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_electron_vibrancy",
+      "target": "research_ui_design_electron_webcam",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_electron_vs_tauri",
+      "target": "research_ui_design_electron_vibrancy",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_electron_vs_tauri",
+      "target": "research_ui_design_tauri_v2_vibrancy",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_electron_css_transparency",
+      "target": "research_ui_design_css_glassmorphism",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.9,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 4",
+      "weight": 0.9
+    },
+    {
+      "source": "research_ui_design_tauri_webcam_access",
+      "target": "research_ui_design_electron_webcam",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 3,4",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_tauri_webcam_access",
+      "target": "research_ui_design_hand_tracking_edge_problem",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 3,6",
+      "weight": 0.8
+    },
+    {
+      "source": "research_ui_design_electron_webcam",
+      "target": "research_ui_design_hand_tracking_edge_problem",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 4,6",
+      "weight": 0.8
+    },
+    {
+      "source": "research_ui_design_linear_approach",
+      "target": "research_ui_design_density_calm_principles",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_vercel_pattern",
+      "target": "research_ui_design_density_calm_principles",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_raycast_pattern",
+      "target": "research_ui_design_density_calm_principles",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_linear_approach",
+      "target": "research_ui_design_vercel_data_row_css",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.7,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 0.7
+    },
+    {
+      "source": "research_ui_design_raycast_pattern",
+      "target": "research_ui_design_raycast_command_item_css",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_density_calm_principles",
+      "target": "research_ui_design_agent_card_css",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_agent_card_css",
+      "target": "research_ui_design_agent_state_colours",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_agent_card_css",
+      "target": "research_ui_design_working_pulse_animation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 5, quick ref",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_agent_card_css",
+      "target": "research_ui_design_premium_glass_formula",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_agent_state_colours",
+      "target": "research_ui_design_colour_system",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 5, summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_status_badge_css",
+      "target": "research_ui_design_linear_approach",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_vercel_data_row_css",
+      "target": "research_ui_design_vercel_pattern",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_hand_tracking_edge_problem",
+      "target": "research_ui_design_virtual_canvas_extension",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_virtual_canvas_extension",
+      "target": "research_ui_design_extended_to_screen_fn",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_virtual_canvas_extension",
+      "target": "research_ui_design_extended_tracker_class",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_extended_tracker_class",
+      "target": "research_ui_design_extended_to_screen_fn",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_extended_tracker_class",
+      "target": "research_ui_design_hand_opacity_fade",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_extended_tracker_class",
+      "target": "research_ui_design_extended_gesture_engine",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_virtual_canvas_extension",
+      "target": "research_ui_design_wider_camera_crop",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_wider_camera_crop",
+      "target": "research_ui_design_pip_camera_css",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_pip_camera_css",
+      "target": "research_ui_design_edge_zone_indicator_css",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_hand_opacity_fade",
+      "target": "research_ui_design_edge_zone_indicator_css",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 6",
+      "weight": 0.8
+    },
+    {
+      "source": "research_ui_design_gmux_design_tokens",
+      "target": "research_ui_design_colour_system",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_design_tokens",
+      "target": "research_ui_design_glass_design_tokens",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_design_tokens",
+      "target": "research_ui_design_typography_system",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_design_tokens",
+      "target": "research_ui_design_motion_system",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_gmux_design_tokens",
+      "target": "research_ui_design_agent_state_colours",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "summary",
+      "weight": 1.0
+    },
+    {
+      "source": "research_ui_design_saturation_trick",
+      "target": "research_ui_design_iterm2_dimming",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.72,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 1,2",
+      "weight": 0.72
+    },
+    {
+      "source": "research_ui_design_raycast_pattern",
+      "target": "research_ui_design_warp_terminal",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.65,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "sections 2,5",
+      "weight": 0.65
+    },
+    {
+      "source": "research_ui_design_pane_dimming_css",
+      "target": "research_ui_design_iterm2_dimming",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md",
+      "source_location": "section 2, quick ref",
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "glass_system_cluster",
+      "label": "CSS Glass System \u2014 premium formula, saturation trick, border trick, will-change caveat, backdrop requirement, blur reference, design tokens",
+      "nodes": [
+        "research_ui_design_premium_glass_formula",
+        "research_ui_design_saturation_trick",
+        "research_ui_design_border_trick",
+        "research_ui_design_will_change_caveat",
+        "research_ui_design_backdrop_filter_requirement",
+        "research_ui_design_blur_amount_reference",
+        "research_ui_design_glass_design_tokens"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md"
+    },
+    {
+      "id": "extended_canvas_cluster",
+      "label": "Extended Canvas Hand Tracking System \u2014 virtual canvas extension, ExtendedTracker, extendedToScreen, wider crop, opacity fade, ExtendedGestureEngine",
+      "nodes": [
+        "research_ui_design_virtual_canvas_extension",
+        "research_ui_design_extended_tracker_class",
+        "research_ui_design_extended_to_screen_fn",
+        "research_ui_design_wider_camera_crop",
+        "research_ui_design_hand_opacity_fade",
+        "research_ui_design_extended_gesture_engine"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "RESEARCH_UI_DESIGN.md"
+    },
+    {
+      "id": "platform_vibrancy_cluster",
+      "label": "Platform Vibrancy Implementations \u2014 Tauri v2, Electron, macOS NSVisualEffectView",
+      "nodes": [
+        "research_ui_design_macos_vibrancy_native",
+        "research_ui_design_tauri_v2_vibrancy",
+        "research_ui_design_electron_vibrancy",
+        "research_ui_design_electron_vs_tauri"
+      ],
+      "relation": "implement",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95,
+      "source_file": "RESEARCH_UI_DESIGN.md"
+    }
+  ],
+  "input_tokens": 5200,
+  "output_tokens": 3400
+}

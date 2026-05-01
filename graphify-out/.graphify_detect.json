@@ -1,0 +1,17 @@
+{
+  "files": {
+    "code": [],
+    "document": [
+      "RESEARCH_UI_DESIGN.md"
+    ],
+    "paper": [],
+    "image": [],
+    "video": []
+  },
+  "total_files": 1,
+  "total_words": 5193,
+  "needs_graph": true,
+  "warning": "",
+  "skipped_sensitive": [],
+  "graphifyignore_patterns": 0
+}

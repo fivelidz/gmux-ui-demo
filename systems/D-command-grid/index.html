@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>gmux · Command Grid</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   SYSTEM D — COMMAND GRID
+   Design language: Raycast-inspired command palette + data grid.
+   Keyboard-first. Every action is a command. The agent list is
+   a searchable, filterable command space. One accent colour,
+   everything else grey. Bold status, quiet chrome.
+   Best for: power users, keyboard-first workflow, small screens.
+═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:       #0a0c12;
+  --surface:  #111520;
+  --surface2: #181d2c;
+  --card:     #111520;
+  --border:   rgba(255,255,255,0.08);
+  --border-hi:rgba(255,255,255,0.14);
+  --muted:    #556070;
+  --text:     #c8d0e0;
+  --text-bright: #e8edf8;
+  --accent:   #5b8af0;   /* single blue accent — Raycast style */
+  --accent-d: rgba(91,138,240,0.15);
+
+  --waiting:    #e84040;
+  --working:    #1fc060;
+  --permission: #e07820;
+  --done:       #3878e0;
+  --error:      #e84040;
+  --idle:       #283040;
+
+  --font:  'SF Pro Text','Inter',system-ui,sans-serif;
+  --mono:  'SF Mono','Fira Code','Cascadia Code',monospace;
+  --row-h: 44px;
+  --cmd-h: 52px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 13px;
+  overflow: hidden; user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── App shell ── */
+#app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: 44px 1fr 24px;
+  height: 100vh;
+}
+
+/* ── Topbar ── */
+#topbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+/* macOS traffic lights safe space */
+.tl-space { width: 72px; flex-shrink: 0; -webkit-app-region: drag; }
+
+.tp-brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px; font-size: 13px; font-weight: 800; letter-spacing: -0.02em;
+  border-right: 1px solid var(--border); height: 100%; flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+.tp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: dot-pulse 3s ease-in-out infinite; }
+@keyframes dot-pulse { 0%,100%{opacity:.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
+
+/* Command bar in topbar */
+#cmd-bar {
+  flex: 1; display: flex; align-items: center; gap: 6px;
+  padding: 0 14px; height: 100%; -webkit-app-region: no-drag;
+}
+#cmd-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text-bright); font-family: var(--font); font-size: 13px; font-weight: 500;
+  caret-color: var(--accent); height: 100%;
+}
+#cmd-input::placeholder { color: var(--muted); }
+.cmd-kbd {
+  font-size: 10px; font-weight: 700; font-family: var(--mono);
+  padding: 2px 6px; border-radius: 4px;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  color: var(--muted); flex-shrink: 0;
+}
+
+.tp-right {
+  display: flex; align-items: stretch; margin-left: auto;
+  border-left: 1px solid var(--border);
+  -webkit-app-region: no-drag;
+}
+.tp-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 12px; font-size: 11px; font-weight: 600;
+  color: var(--muted); background: none; border: none; border-left: 1px solid var(--border);
+  cursor: pointer; transition: all 100ms ease; white-space: nowrap; height: 100%;
+}
+.tp-btn:first-child { border-left: none; }
+.tp-btn:hover  { color: var(--text-bright); background: var(--surface2); }
+.tp-btn.active { color: var(--accent); background: var(--accent-d); }
+.tp-btn.voice-on { color: var(--waiting); background: rgba(232,64,64,0.10); animation: voice-pulse 1.2s ease-in-out infinite; }
+@keyframes voice-pulse { 0%,100%{opacity:.8} 50%{opacity:1} }
+#tp-mode { font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ── Left column: command list ── */
+#cmd-list-panel {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* Section headers */
+.cl-section {
+  height: 26px; display: flex; align-items: center; padding: 0 14px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.02); gap: 8px; flex-shrink: 0;
+}
+.cl-section-count { color: var(--text); font-family: var(--mono); }
+.cl-section-filter { margin-left: auto; display: flex; gap: 3px; }
+.cl-filter-btn {
+  padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700;
+  cursor: pointer; font-family: var(--font);
+  color: var(--muted); background: none; border: none; transition: all 100ms ease;
+}
+.cl-filter-btn:hover  { color: var(--text); background: rgba(255,255,255,0.06); }
+.cl-filter-btn.active { color: var(--accent); background: var(--accent-d); }
+
+/* Agent rows */
+#agent-rows { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+.cmd-row {
+  display: flex; align-items: center; gap: 0;
+  height: var(--cmd-h); cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 80ms ease; position: relative;
+  padding: 0 14px 0 0;
+}
+.cmd-row:hover   { background: rgba(255,255,255,0.04); }
+.cmd-row.selected { background: var(--accent-d); }
+.cmd-row.selected::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: var(--accent);
+}
+.cmd-row.voice-target { background: rgba(232,64,64,0.06); }
+
+/* Row icon / state indicator */
+.cr-icon {
+  width: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cr-state-box {
+  width: 26px; height: 26px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; flex-shrink: 0;
+  transition: background 200ms ease;
+}
+/* Row content */
+.cr-content { flex: 1; min-width: 0; padding-right: 8px; }
+.cr-top { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.cr-name { font-size: 13px; font-weight: 700; color: var(--text-bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.cr-win  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+.cr-bottom { display: flex; align-items: center; gap: 6px; }
+.cr-sub  { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.cr-tool { font-size: 10px; font-weight: 700; font-family: var(--mono); padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,0.05); color: var(--muted); flex-shrink: 0; }
+
+/* Row metrics */
+.cr-metrics { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; padding-right: 4px; }
+.cr-ram-bar { width: 44px; height: 3px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+.cr-ram-fill { height: 100%; border-radius: 2px; transition: width 400ms; }
+.cr-ram-val { font-size: 10px; font-weight: 700; color: var(--muted); font-family: var(--mono); text-align: right; }
+.cr-ram-val.hot { color: var(--waiting); }
+
+/* ── Right panel: agent detail + command palette ── */
+#right-panel {
+  display: grid;
+  grid-template-rows: 1fr 200px;
+  overflow: hidden;
+}
+
+/* Agent detail */
+#agent-detail {
+  overflow-y: auto; padding: 0;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  display: flex; flex-direction: column;
+}
+#ad-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.adh-top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.adh-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.adh-name { font-size: 20px; font-weight: 800; letter-spacing: -0.03em; flex: 1; }
+.adh-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 5px; }
+.adh-perm-row { display: flex; gap: 8px; }
+.adh-perm-btn {
+  flex: 1; max-width: 160px; padding: 9px; border-radius: 7px;
+  font-family: var(--font); font-size: 12px; font-weight: 700;
+  cursor: pointer; border: none; transition: all 120ms;
+}
+.adh-perm-btn.approve { background: rgba(31,192,96,.14); color: var(--working); border: 1px solid rgba(31,192,96,.3); }
+.adh-perm-btn.reject  { background: rgba(232,64,64,.11); color: var(--waiting);  border: 1px solid rgba(232,64,64,.25); }
+
+#ad-body { padding: 20px 24px; flex: 1; display: flex; flex-direction: column; gap: 20px; }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat-box {
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-radius: 9px; padding: 12px 14px;
+}
+.sb-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; }
+.sb-value { font-size: 18px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.sb-value.hot { color: var(--waiting); }
+.sb-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+/* Progress in detail */
+.det-progress { }
+.det-p-header { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.det-p-header .big { font-size: 16px; font-weight: 800; color: var(--text-bright); }
+.det-p-track { height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
+.det-p-fill  { height: 100%; border-radius: 3px; transition: width 500ms ease; }
+
+/* Resource bars */
+.det-bar { margin-bottom: 8px; }
+.det-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+.det-bar-val  { font-weight: 700; }
+.det-bar-val.hot { color: var(--waiting); }
+.det-track { height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
+.det-fill  { height: 100%; border-radius: 3px; transition: width 500ms ease; }
+
+/* Token breakdown */
+.det-tokens { display: flex; gap: 12px; }
+.det-tok { flex: 1; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; }
+.det-tok-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; }
+.det-tok-value { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* Tool history */
+.det-tools { }
+.det-tools-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 7px; }
+.det-tools-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.det-tool { font-size: 11px; font-weight: 700; font-family: var(--mono); padding: 3px 9px; border-radius: 5px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--muted); }
+.det-tool.latest { background: rgba(91,138,240,.14); border-color: rgba(91,138,240,.3); color: var(--accent); }
+
+/* ── Bottom: Command palette ── */
+#command-palette {
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#cp-header {
+  height: 32px; display: flex; align-items: center; padding: 0 16px; gap: 8px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+#cp-list { flex: 1; overflow-y: auto; padding: 6px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
+.cp-cmd {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 12px; border-radius: 7px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  font-size: 12px; font-weight: 600; color: var(--text);
+  cursor: pointer; transition: all 100ms ease; white-space: nowrap;
+}
+.cp-cmd:hover  { border-color: var(--accent); background: var(--accent-d); color: var(--text-bright); }
+.cp-cmd:active { transform: scale(0.97); }
+.cp-icon { font-size: 14px; }
+.cp-key  { font-size: 10px; font-weight: 700; font-family: var(--mono); padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,0.08); color: var(--muted); }
+
+/* ── Gesture PiP ── */
+#gesture-pip {
+  position: fixed; bottom: 24px; right: 0;
+  width: 180px; height: 101px;
+  display: none; overflow: hidden;
+  border-radius: 8px 0 0 0;
+  border-top: 1px solid var(--border); border-left: 1px solid var(--border);
+}
+#gesture-pip.active { display: block; }
+#pip-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.4; }
+#pip-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* Gesture HUD inline in status bar */
+#gesture-hud { display: flex; align-items: center; gap: 10px; }
+.ghud-hand { display: flex; align-items: center; gap: 4px; }
+.ghud-role { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-family: var(--mono); }
+.ghud-role.r { color: var(--done); }
+.ghud-role.l { color: var(--accent); }
+.ghud-name { font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--text); }
+.ghud-conf { width: 36px; height: 3px; background: rgba(255,255,255,.08); border-radius:2px; overflow:hidden; display: inline-block; vertical-align: middle; }
+.ghud-fill { height: 100%; border-radius:2px; transition: width 80ms; }
+
+/* Action toast */
+#action-toast {
+  position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+  background: var(--surface2); border: 1px solid var(--border-hi);
+  border-radius: 7px; padding: 7px 16px;
+  font-size: 12px; font-weight: 700; font-family: var(--mono);
+  opacity: 0; transition: opacity 140ms; white-space: nowrap;
+  pointer-events: none; z-index: 200;
+}
+#action-toast.show { opacity: 1; }
+
+/* ── Status bar ── */
+#statusbar {
+  grid-column: 1/-1;
+  display: flex; align-items: center; gap: 10px; padding: 0 14px;
+  background: var(--surface); border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted); overflow: hidden;
+}
+.sb-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.sb-sep { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; }
+kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; font-family: var(--mono); font-size: 9px; }
+.sb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* Colour utilities */
+.bg-waiting    { background:rgba(232,64,64,.14);  color:var(--waiting); }
+.bg-working    { background:rgba(31,192,96,.13);  color:var(--working); }
+.bg-permission { background:rgba(224,120,32,.15); color:var(--permission); }
+.bg-done       { background:rgba(56,120,224,.13); color:var(--done); }
+.bg-error      { background:rgba(232,64,64,.16);  color:var(--error); }
+.bg-idle       { background:rgba(40,48,64,.2);    color:var(--muted); }
+.bg-sub_permission { background:rgba(224,120,32,.13); color:var(--permission); }
+
+@keyframes working-dot { 0%,100%{box-shadow:0 0 0 0 rgba(31,192,96,.6)}50%{box-shadow:0 0 0 3px rgba(31,192,96,0)} }
+</style>
+</head>
+<body>
+
+<div id="gesture-pip">
+  <video id="pip-video" autoplay playsinline muted></video>
+  <canvas id="pip-canvas"></canvas>
+</div>
+<div id="action-toast"></div>
+
+<div id="app">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="tl-space"></div>
+    <div class="tp-brand"><div class="tp-dot"></div>gmux</div>
+    <div id="cmd-bar">
+      <input type="text" id="cmd-input" placeholder="Search agents, commands…" autocomplete="off" spellcheck="false"/>
+      <span class="cmd-kbd">⌘K</span>
+    </div>
+    <div class="tp-right">
+      <div class="tp-btn" id="tp-mode">NORMAL</div>
+      <button class="tp-btn" id="btn-gesture" onclick="toggleGesture()">✋ Gesture</button>
+      <button class="tp-btn" id="btn-voice"   onclick="toggleVoice()">🎙 Voice</button>
+    </div>
+  </div>
+
+  <!-- Left column: agent list -->
+  <div id="cmd-list-panel">
+    <div class="cl-section">
+      Agents
+      <span class="cl-section-count" id="cl-count">0</span>
+      <div class="cl-section-filter">
+        <button class="cl-filter-btn active" id="fb-all"     onclick="setFilter('all')">All</button>
+        <button class="cl-filter-btn" id="fb-active"  onclick="setFilter('active')">Active</button>
+        <button class="cl-filter-btn" id="fb-attn"    onclick="setFilter('attention')">⚡</button>
+      </div>
+    </div>
+    <div id="agent-rows"></div>
+  </div>
+
+  <!-- Right panel: detail + commands -->
+  <div id="right-panel">
+    <div id="agent-detail">
+      <div id="ad-header"></div>
+      <div id="ad-body"></div>
+    </div>
+    <div id="command-palette">
+      <div id="cp-header">
+        Commands
+        <span style="margin-left:auto;font-size:9px">click or keyboard shortcut</span>
+      </div>
+      <div id="cp-list"></div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <span class="sb-dot" style="background:var(--accent)"></span>
+    <span id="sb-session">session · gmux</span>
+    <div class="sb-sep"></div>
+    <span id="sb-summary"></span>
+    <div id="gesture-hud">
+      <div class="ghud-hand">
+        <span class="ghud-role r">R</span>
+        <span class="ghud-name" id="ghud-r">—</span>
+        <span class="ghud-conf"><span class="ghud-fill" id="ghud-rc" style="width:0;background:var(--done)"></span></span>
+      </div>
+      <div class="ghud-hand">
+        <span class="ghud-role l">L</span>
+        <span class="ghud-name" id="ghud-l">—</span>
+        <span class="ghud-conf"><span class="ghud-fill" id="ghud-lc" style="width:0;background:var(--accent)"></span></span>
+      </div>
+    </div>
+    <div class="sb-right">
+      <kbd>↑↓</kbd>nav
+      <kbd>J</kbd>jump
+      <kbd>Enter</kbd>approve
+      <kbd>G</kbd>gesture
+      <kbd>V</kbd>voice
+      <span id="sb-src" style="color:var(--muted)">● mock</span>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { MOCK_PANES, STATE_COLOR, STATE_LABEL, panesArray, fmtRam, fmtTokens, fmtUptime, ramPct, initDataSource } from '../../shared/mock-data.js';
+import { GestureEngine }   from '../../shared/gesture-engine.js';
+import { GestureRenderer } from '../../shared/gesture-renderer.js';
+
+// ── State ──────────────────────────────────────────────────────────────
+let panes       = JSON.parse(JSON.stringify(MOCK_PANES));
+let selectedId  = '%2';
+let voiceTarget = '%2';
+let gestureOn   = false;
+let voiceOn     = false;
+let filter      = 'all';
+let searchQ     = '';
+let engine, renderer, stream, handLandmarker, lastVT = -1;
+
+// ── Filtering ─────────────────────────────────────────────────────────
+function filteredArr() {
+  let arr = panesArray(panes);
+  if (filter === 'active') arr = arr.filter(p => p.state !== 'idle' && p.state !== 'not_started');
+  if (filter === 'attention') arr = arr.filter(p => p.state === 'waiting' || p.state === 'permission' || p.state === 'sub_permission' || p.state === 'error');
+  if (searchQ) arr = arr.filter(p => p.window_name.includes(searchQ) || (p.model||'').includes(searchQ) || (p.current_tool||'').includes(searchQ));
+  return arr;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────
+function render() {
+  const arr = filteredArr();
+  renderList(arr);
+  renderDetail(panes[selectedId] || arr[0]);
+  renderCommands(panes[selectedId]);
+  renderStatusBar();
+}
+
+function renderList(arr) {
+  document.getElementById('cl-count').textContent = arr.length;
+  document.getElementById('agent-rows').innerHTML = arr.map(p => {
+    const col   = STATE_COLOR[p.state] || STATE_COLOR.idle;
+    const rPct  = ramPct(p.ram_mb || 0);
+    const rCol  = rPct > 80 ? 'var(--waiting)' : rPct > 60 ? 'var(--permission)' : col;
+    const isSelected = p.pane_id === selectedId;
+    const isVoice    = p.pane_id === voiceTarget && voiceOn;
+    const dotStyle   = p.state === 'working' ? 'animation:working-dot 1.4s ease-in-out infinite' : '';
+
+    // State box: coloured rounded-rect with state emoji/char
+    const stateChar = { working:'▶', waiting:'⏸', permission:'!', sub_permission:'^!', done:'✓', error:'✗', idle:'—', not_started:'○' };
+    const boxBg = { working:'rgba(31,192,96,.14)', waiting:'rgba(232,64,64,.14)', permission:'rgba(224,120,32,.18)', sub_permission:'rgba(224,120,32,.14)', done:'rgba(56,120,224,.14)', error:'rgba(232,64,64,.18)', idle:'rgba(40,48,64,.2)', not_started:'rgba(40,48,64,.15)' };
+
+    return `<div class="cmd-row ${isSelected?'selected':''} ${isVoice?'voice-target':''}"
+      onclick="select('${p.pane_id}')">
+      <div class="cr-icon">
+        <div class="cr-state-box" style="background:${boxBg[p.state]||'rgba(40,48,64,.2)'};color:${col};${dotStyle}">
+          ${stateChar[p.state]||'—'}
+        </div>
+      </div>
+      <div class="cr-content">
+        <div class="cr-top">
+          <span class="cr-name">${p.window_name}</span>
+          <span class="cr-win">${p.window_index}</span>
+        </div>
+        <div class="cr-bottom">
+          <span class="cr-sub">${p.model||p.session_name}</span>
+          ${p.current_tool ? `<span class="cr-tool">${p.current_tool}</span>` : ''}
+          ${isVoice ? '<span style="font-size:10px;color:var(--waiting)">🎙</span>' : ''}
+        </div>
+      </div>
+      <div class="cr-metrics">
+        <div class="cr-ram-bar"><div class="cr-ram-fill" style="width:${rPct}%;background:${rCol}"></div></div>
+        <div class="cr-ram-val ${rPct>70?'hot':''}">${fmtRam(p.ram_mb)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderDetail(p) {
+  if (!p) { document.getElementById('ad-header').innerHTML = ''; document.getElementById('ad-body').innerHTML = ''; return; }
+  const col   = STATE_COLOR[p.state] || STATE_COLOR.idle;
+  const rPct  = ramPct(p.ram_mb || 0);
+  const cPct  = p.cpu_pct || 0;
+  const done  = p.todo_done, total = p.todo_total, pct = total > 0 ? (done/total*100).toFixed(0) : 0;
+  const rCol  = rPct > 80 ? 'var(--waiting)' : rPct > 60 ? 'var(--permission)' : 'var(--done)';
+  const cCol  = cPct > 80 ? 'var(--waiting)' : cPct > 60 ? 'var(--permission)' : 'var(--working)';
+  const tools = p.tool_history || [];
+  const dotStyle = p.state === 'working' ? 'animation:working-dot 1.4s ease-in-out infinite' : '';
+
+  const permBtns = (p.state==='permission'||p.state==='sub_permission') ? `
+    <div class="adh-perm-row">
+      <button class="adh-perm-btn approve" onclick="approvePerm('${p.pane_id}')">✓ Approve</button>
+      <button class="adh-perm-btn reject"  onclick="rejectPerm('${p.pane_id}')">✗ Reject</button>
+    </div>` : '';
+
+  document.getElementById('ad-header').innerHTML = `
+    <div class="adh-top">
+      <span class="adh-dot" style="background:${col};${dotStyle}"></span>
+      <span class="adh-name">${p.window_name}</span>
+      <span class="adh-badge bg-${p.state}">${STATE_LABEL[p.state]}</span>
+    </div>
+    ${permBtns}
+  `;
+
+  document.getElementById('ad-body').innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="sb-label">RAM</div>
+        <div class="sb-value ${rPct>70?'hot':''}">${fmtRam(p.ram_mb)}</div>
+        <div class="sb-sub">${rPct}% / 3 GB</div>
+      </div>
+      <div class="stat-box">
+        <div class="sb-label">CPU</div>
+        <div class="sb-value ${cPct>70?'hot':''}">${cPct}%</div>
+        <div class="sb-sub">${p.model||'—'}</div>
+      </div>
+      <div class="stat-box">
+        <div class="sb-label">Uptime</div>
+        <div class="sb-value" style="font-size:14px">${fmtUptime(p.uptime_s)}</div>
+        <div class="sb-sub">win ${p.window_index}</div>
+      </div>
+    </div>
+    ${total>0?`
+    <div class="det-progress">
+      <div class="det-p-header"><span>Todos</span><span><span class="big">${done}</span> / ${total} (${pct}%)</span></div>
+      <div class="det-p-track"><div class="det-p-fill" style="width:${pct}%;background:${p.state==='working'?'var(--working)':'var(--accent)'}"></div></div>
+    </div>`:''}
+    <div>
+      <div class="det-bar">
+        <div class="det-bar-label"><span>RAM usage</span><span class="det-bar-val ${rPct>70?'hot':''}">${fmtRam(p.ram_mb)}</span></div>
+        <div class="det-track"><div class="det-fill" style="width:${rPct}%;background:${rCol}"></div></div>
+      </div>
+      <div class="det-bar">
+        <div class="det-bar-label"><span>CPU</span><span class="det-bar-val ${cPct>70?'hot':''}">${cPct}%</span></div>
+        <div class="det-track"><div class="det-fill" style="width:${cPct}%;background:${cCol}"></div></div>
+      </div>
+    </div>
+    <div class="det-tokens">
+      <div class="det-tok"><div class="det-tok-label">Tokens ↑</div><div class="det-tok-value">${fmtTokens(p.token_in)}</div></div>
+      <div class="det-tok"><div class="det-tok-label">Tokens ↓</div><div class="det-tok-value">${fmtTokens(p.token_out)}</div></div>
+      <div class="det-tok"><div class="det-tok-label">Total</div><div class="det-tok-value">${fmtTokens((p.token_in||0)+(p.token_out||0))}</div></div>
+    </div>
+    ${tools.length?`
+    <div class="det-tools">
+      <div class="det-tools-label">Tool history</div>
+      <div class="det-tools-list">${tools.map((t,i)=>`<span class="det-tool ${i===tools.length-1?'latest':''}">${t}</span>`).join('')}</div>
+    </div>`:''}
+    ${p.last_line?`<div style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.5;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:7px">${p.last_line}</div>`:''}
+  `;
+}
+
+function renderCommands(p) {
+  const commands = [
+    { icon:'⚡', label:'Jump to waiting',     key:'J',      action:() => jumpToRed() },
+    { icon:'→',  label:'Next agent',          key:'→',      action:() => navAgent(+1) },
+    { icon:'←',  label:'Previous agent',      key:'←',      action:() => navAgent(-1) },
+    { icon:'🎙', label:'Toggle voice',         key:'V',      action:() => toggleVoice() },
+    { icon:'✋', label:'Toggle gesture',       key:'G',      action:() => window.toggleGesture() },
+    ...(p && (p.state==='permission'||p.state==='sub_permission') ? [
+      { icon:'✓',  label:'Approve',           key:'Enter',  action:() => approvePerm(p.pane_id) },
+      { icon:'✗',  label:'Reject',            key:'Backspace', action:() => rejectPerm(p.pane_id) },
+    ] : []),
+    { icon:'⊞',  label:'Fleet view',          key:'F',      action:() => window.open('../02-fleet-view/index.html') },
+    { icon:'◎',  label:'Projector mode',      key:'P',      action:() => window.open('../04-projector/index.html') },
+  ];
+  document.getElementById('cp-list').innerHTML = commands.map(c =>
+    `<div class="cp-cmd" onclick="(${c.action.toString()})()">
+       <span class="cp-icon">${c.icon}</span>
+       ${c.label}
+       <span class="cp-key">${c.key}</span>
+     </div>`
+  ).join('');
+}
+
+function renderStatusBar() {
+  const arr = panesArray(panes);
+  const c = {waiting:0,working:0,permission:0,error:0,sub_permission:0};
+  arr.forEach(p => { if(c[p.state]!==undefined) c[p.state]++; });
+  const parts = [];
+  if (c.waiting)    parts.push(`<span style="color:var(--waiting)">${c.waiting} waiting</span>`);
+  if (c.permission+c.sub_permission) parts.push(`<span style="color:var(--permission)">${c.permission+c.sub_permission} pending</span>`);
+  if (c.working)    parts.push(`<span style="color:var(--working)">${c.working} working</span>`);
+  if (c.error)      parts.push(`<span style="color:var(--error)">${c.error} error</span>`);
+  document.getElementById('sb-summary').innerHTML = parts.join(' · ') + (parts.length ? ' &nbsp;' : '');
+}
+
+// ── Controls ────────────────────────────────────────────────────────────
+function select(id) { selectedId = id; if(voiceOn) voiceTarget=id; render(); }
+window.select = select;
+
+function navAgent(dir) {
+  const arr = filteredArr();
+  const idx = arr.findIndex(p => p.pane_id === selectedId);
+  const next = arr[(idx + dir + arr.length) % arr.length];
+  if (next) select(next.pane_id);
+}
+
+function approvePerm(id) { if(panes[id]){panes[id].state='working';panes[id].current_tool=null;render();showToast('✓ Approved');} }
+function rejectPerm(id)  { if(panes[id]){panes[id].state='waiting';render();showToast('✗ Rejected');} }
+window.approvePerm = approvePerm;
+window.rejectPerm  = rejectPerm;
+
+function jumpToRed() {
+  const arr = filteredArr();
+  const red = arr.find(p => p.state==='waiting'||p.state==='permission'||p.state==='sub_permission');
+  if (red) { select(red.pane_id); showToast('⚡ ' + red.window_name); }
+}
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  const btn = document.getElementById('btn-voice');
+  btn.classList.toggle('voice-on', voiceOn);
+  btn.classList.toggle('active',   !voiceOn);
+  document.getElementById('tp-mode').textContent = voiceOn ? 'VOICE' : (gestureOn ? 'GESTURE' : 'NORMAL');
+  if (voiceOn) voiceTarget = selectedId;
+  showToast(voiceOn ? '🎙 VOICE ON' : '🎙 VOICE OFF');
+  render();
+}
+window.toggleVoice = toggleVoice;
+
+window.setFilter = function(f) {
+  filter = f;
+  document.querySelectorAll('.cl-filter-btn').forEach(b => b.classList.toggle('active', b.id === 'fb-' + f));
+  render();
+};
+
+// Search
+document.getElementById('cmd-input').addEventListener('input', e => {
+  searchQ = e.target.value.trim().toLowerCase();
+  render();
+});
+document.getElementById('cmd-input').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { searchQ = ''; e.target.value = ''; render(); e.target.blur(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); navAgent(+1); }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); navAgent(-1); }
+  if (e.key === 'Enter')     { e.preventDefault(); const p=panes[selectedId]; if(p&&(p.state==='permission'||p.state==='sub_permission'))approvePerm(selectedId); }
+});
+
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('action-toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),1600);
+}
+
+// ── Keyboard ───────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const active = document.activeElement;
+  const inInput = active === document.getElementById('cmd-input');
+  if (!inInput) {
+    if (e.key==='ArrowDown') { e.preventDefault(); navAgent(+1); }
+    if (e.key==='ArrowUp')   { e.preventDefault(); navAgent(-1); }
+    if (e.key==='j'||e.key==='J') jumpToRed();
+    if (e.key==='v'||e.key==='V') toggleVoice();
+    if (e.key==='g'||e.key==='G') window.toggleGesture();
+    if (e.key==='f'||e.key==='F') window.setFilter(filter==='all'?'active':'all');
+    if (e.key==='Enter'||e.key===' ') {
+      e.preventDefault(); const p=panes[selectedId];
+      if(p&&(p.state==='permission'||p.state==='sub_permission'))approvePerm(selectedId);
+    }
+  }
+  // ⌘K = focus search
+  if ((e.metaKey||e.ctrlKey) && e.key==='k') { e.preventDefault(); document.getElementById('cmd-input').focus(); }
+});
+
+// ── Gesture ─────────────────────────────────────────────────────────────
+window.toggleGesture = async function() {
+  gestureOn = !gestureOn;
+  document.getElementById('btn-gesture').classList.toggle('active', gestureOn);
+  document.getElementById('gesture-pip').classList.toggle('active', gestureOn);
+  document.getElementById('tp-mode').textContent = gestureOn ? 'GESTURE' : (voiceOn ? 'VOICE' : 'NORMAL');
+  if (gestureOn && !stream) await startCamera();
+};
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:360},facingMode:'user'}});
+    const vid=document.getElementById('pip-video');
+    vid.srcObject=stream; await vid.play();
+    await initEngine(); requestAnimationFrame(gLoop);
+  } catch(e) { console.warn('Camera:', e); gestureOn=false; document.getElementById('btn-gesture').classList.remove('active'); document.getElementById('gesture-pip').classList.remove('active'); }
+}
+
+async function initEngine() {
+  let HandLandmarker, FilesetResolver;
+  try { const mod=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm'); HandLandmarker=mod.HandLandmarker;FilesetResolver=mod.FilesetResolver; } catch(e){return;}
+  const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
+  handLandmarker=await HandLandmarker.createFromOptions(fs,{
+    baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},
+    runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:0.5,minHandPresenceConfidence:0.5,minTrackingConfidence:0.5
+  });
+  engine=new GestureEngine({gestureConfirmFrames:3,swipeVelocityThreshold:0.022,smoothingFactor:0.7});
+  renderer=new GestureRenderer(document.getElementById('pip-canvas'),{
+    mirror:true,background:'video',showSkeleton:true,showLandmarks:true,showLabels:true,showTrails:true,showPinchCircle:true,showCursor:true,showMesh:false,
+    handColors:{Left:{primary:'#5b8af0',secondary:'#3060c0',glow:'rgba(91,138,240,0.4)',mesh:'rgba(91,138,240,0.06)'},Right:{primary:'#3878e0',secondary:'#1040a0',glow:'rgba(56,120,224,0.4)',mesh:'rgba(56,120,224,0.06)'}}
+  });
+  engine.on('frame',({hand,gesture})=>{
+    const ne=document.getElementById(hand==='Right'?'ghud-r':'ghud-l');
+    const ce=document.getElementById(hand==='Right'?'ghud-rc':'ghud-lc');
+    if(ne) ne.textContent=gesture?.name||'—';
+    if(ce){const c=(gesture?.confidence||0)*100;ce.style.width=c+'%';}
+  });
+  engine.on('gestureStart',({hand,gesture})=>{
+    const g=gesture?.name;
+    if(hand==='Right'){
+      if(g==='SWIPE_RIGHT'){navAgent(+1);showToast('→ NEXT');}
+      if(g==='SWIPE_LEFT') {navAgent(-1);showToast('← PREV');}
+    }
+    if(hand==='Left'){
+      if(g==='POINT')      {toggleVoice();}
+      if(g==='THREE')      {jumpToRed();}
+      if(g==='THUMBS_UP')  {const p=panes[selectedId];if(p&&(p.state==='permission'||p.state==='sub_permission'))approvePerm(selectedId);}
+      if(g==='THUMBS_DOWN'){rejectPerm(selectedId);}
+    }
+  });
+}
+
+function gLoop(){
+  if(!gestureOn) return;
+  requestAnimationFrame(gLoop);
+  const vid=document.getElementById('pip-video');
+  if(!handLandmarker||vid.paused||vid.currentTime===lastVT) return;
+  lastVT=vid.currentTime;
+  const gc=document.getElementById('pip-canvas');
+  gc.width=vid.videoWidth||vid.clientWidth;gc.height=vid.videoHeight||vid.clientHeight;
+  const results=handLandmarker.detectForVideo(vid,performance.now());
+  const hd={multiHandLandmarks:results.landmarks||[],multiHandedness:results.handedness?.map(h=>({label:h[0]?.categoryName||'Right'}))||[]};
+  engine.update(hd);
+  const E=0.12;
+  renderer.draw({...hd,multiHandLandmarks:hd.multiHandLandmarks.map(lms=>lms.map(lm=>({...lm,x:(lm.x+E)/(1+E*2),y:(lm.y+E)/(1+E*2)})))},engine);
+}
+
+// ── Data source ─────────────────────────────────────────────────────────
+const src = await initDataSource(panes, (updated) => { panes=updated; render(); });
+document.getElementById('sb-src').textContent = src==='tauri'?'● tauri':'● mock';
+document.getElementById('sb-src').style.color = src==='tauri'?'var(--accent)':'var(--muted)';
+
+render();
+</script>
+</body>
+</html>

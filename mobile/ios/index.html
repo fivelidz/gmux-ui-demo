@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="gmux"/>
+<meta name="theme-color" content="#07090f"/>
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2307090f'/><circle cx='22' cy='50' r='8' fill='%236c5ce7'/><text x='36' y='58' font-family='system-ui' font-weight='800' font-size='28' fill='%23e6edf3'>mx</text></svg>"/>
+<title>gmux</title>
+<style>
+:root {
+  --bg:         #07090f;
+  --surface:    #0d1117;
+  --card:       #0f1520;
+  --card-hi:    #141e2c;
+  --border:     rgba(255,255,255,0.07);
+  --border-hi:  rgba(255,255,255,0.13);
+  --muted:      #6e7681;
+  --text:       #e6edf3;
+  --accent:     #6c5ce7;
+  --accent2:    rgba(108,92,231,0.15);
+  --cyan:       #00d2ff;
+  --waiting:    #ef4444;
+  --working:    #22c55e;
+  --permission: #f97316;
+  --done:       #3b82f6;
+  --error:      #ef4444;
+  --idle:       #4b5563;
+  /* iOS safe areas */
+  --safe-top:    env(safe-area-inset-top,    44px);
+  --safe-bottom: env(safe-area-inset-bottom, 34px);
+  --safe-left:   env(safe-area-inset-left,   0px);
+  --safe-right:  env(safe-area-inset-right,  0px);
+  /* iOS glass */
+  --glass:       rgba(13,17,23,0.82);
+  --glass-blur:  blur(20px) saturate(180%) brightness(1.02);
+}
+*, *::before, *::after {
+  box-sizing: border-box; margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+html { height: -webkit-fill-available; }
+body {
+  width: 100%; min-height: 100vh; min-height: -webkit-fill-available;
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  font-size: 15px; overflow: hidden; user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── App shell ── */
+#app {
+  display: flex; flex-direction: column;
+  height: 100vh; height: -webkit-fill-available;
+}
+
+/* ── Status bar spacer (iOS notch/Dynamic Island) ── */
+#status-spacer {
+  height: var(--safe-top);
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  flex-shrink: 0;
+}
+
+/* ── Navigation bar (iOS HIG style) ── */
+#navbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 44px; flex-shrink: 0;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--border);
+}
+.nav-title {
+  font-size: 17px; font-weight: 700; letter-spacing: -0.02em;
+  display: flex; align-items: center; gap: 8px;
+}
+.nav-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent);
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+@keyframes pulse-glow { 0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.3)} }
+.nav-btn {
+  font-size: 15px; font-weight: 400; color: var(--accent);
+  background: none; border: none; cursor: pointer; padding: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-btn:active { opacity: 0.6; }
+#conn-badge {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; color: var(--muted);
+}
+#conn-dot { width:7px;height:7px;border-radius:50%;background:var(--muted); }
+#conn-dot.live { background:var(--working);box-shadow:0 0 8px var(--working); }
+
+/* ── Scroll content ── */
+#scroll-content {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ── Segment control (iOS style) ── */
+#segment-wrap {
+  padding: 10px 16px 0;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  position: sticky; top: 0; z-index: 10;
+  border-bottom: 1px solid var(--border);
+}
+#segment {
+  display: flex; background: rgba(255,255,255,0.07);
+  border-radius: 9px; padding: 2px; margin-bottom: 10px;
+}
+.seg-btn {
+  flex: 1; padding: 7px 4px; border-radius: 7px;
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  background: none; border: none; cursor: pointer;
+  transition: all 150ms ease; font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.seg-btn.active {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 1px 4px rgba(108,92,231,0.4);
+}
+
+/* ────────────────────────────────────────────────────
+   AGENTS VIEW
+──────────────────────────────────────────────────── */
+#agents-view { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* iOS-style grouped list */
+.agent-group { background: var(--card); border-radius: 13px; overflow: hidden; }
+.agent-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 100ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.agent-row:last-child { border-bottom: none; }
+.agent-row:active { background: rgba(255,255,255,0.05); }
+.agent-row.selected { background: rgba(108,92,231,0.08); }
+.ar-state { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.ar-info { flex: 1; min-width: 0; }
+.ar-name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.ar-detail { font-size: 12px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; flex-shrink: 0; }
+.ar-chevron { color: rgba(255,255,255,0.2); font-size: 13px; flex-shrink: 0; }
+
+/* Permission action row (inline, below agent row) */
+.perm-action-row {
+  display: flex; gap: 1px; background: rgba(255,255,255,0.04);
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.perm-btn {
+  flex: 1; padding: 12px; font-family: inherit; font-size: 14px; font-weight: 700;
+  border: none; cursor: pointer; transition: all 100ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.perm-btn:active { opacity: 0.7; transform: scale(0.97); }
+.perm-btn.approve { background: rgba(34,197,94,0.12); color: var(--working); }
+.perm-btn.reject  { background: rgba(239,68,68,0.10); color: var(--waiting); }
+
+/* Expanded agent detail card */
+#agent-detail {
+  background: var(--card); border-radius: 13px; padding: 16px;
+  display: none; flex-direction: column; gap: 12px;
+}
+#agent-detail.visible { display: flex; }
+.detail-header { display: flex; align-items: center; gap: 10px; }
+.detail-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.detail-name { font-size: 20px; font-weight: 800; letter-spacing: -0.03em; flex: 1; }
+.detail-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 7px; }
+.detail-progress { }
+.dp-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.dp-track { height: 5px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; }
+.dp-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width 600ms ease; }
+.dp-fill.working { background: var(--working); }
+.detail-metrics { display: flex; gap: 0; background: rgba(255,255,255,0.03); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.dm { flex: 1; padding: 10px 12px; border-right: 1px solid var(--border); }
+.dm:last-child { border-right: none; }
+.dm-label { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 3px; }
+.dm-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dm-value.hot { color: var(--waiting); }
+.detail-tool { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 9px; border: 1px solid var(--border); }
+.dt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.dt-dot.working { background: var(--working); animation: act-blink 1s ease-in-out infinite; }
+@keyframes act-blink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes working-dot{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}50%{box-shadow:0 0 0 4px rgba(34,197,94,0)}}
+@keyframes perm-pulse{0%,100%{box-shadow:0 0 0 1px rgba(249,115,22,.2)}50%{box-shadow:0 0 0 1px rgba(249,115,22,.45),0 0 20px rgba(249,115,22,.1)}}
+.dt-text { font-size: 13px; color: var(--muted); font-family: -apple-system-ui-monospace, 'SF Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ────────────────────────────────────────────────────
+   VOICE VIEW
+──────────────────────────────────────────────────── */
+#voice-view { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.voice-target-row {
+  background: var(--card); border-radius: 13px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--border);
+}
+.voice-target-row.listening { border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.05); }
+.vt-dot { width: 10px; height: 10px; border-radius: 50%; transition: all 200ms; }
+.vt-dot.listening { animation: act-blink .7s ease-in-out infinite; }
+.vt-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing:.04em; text-transform:uppercase; }
+.vt-name  { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+
+#waveform-canvas {
+  width: 100%; height: 70px; border-radius: 12px;
+  background: rgba(255,255,255,.025); border: 1px solid var(--border);
+  display: block;
+}
+
+/* Large PTT button */
+#ptt-area { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#ptt-ring {
+  width: 90px; height: 90px; border-radius: 50%;
+  border: 2px solid rgba(239,68,68,.25);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 200ms ease;
+}
+#ptt-ring.active {
+  border-color: rgba(239,68,68,.7);
+  box-shadow: 0 0 0 8px rgba(239,68,68,.08), 0 0 0 18px rgba(239,68,68,.04);
+  animation: ptt-ring-pulse .8s ease-in-out infinite;
+}
+@keyframes ptt-ring-pulse {
+  0%,100%{box-shadow:0 0 0 8px rgba(239,68,68,.08),0 0 0 18px rgba(239,68,68,.04)}
+  50%{box-shadow:0 0 0 14px rgba(239,68,68,.05),0 0 0 28px rgba(239,68,68,.02)}
+}
+#ptt-inner {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: rgba(239,68,68,.12); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30px; transition: all 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+#ptt-inner:active, #ptt-inner.active { background: rgba(239,68,68,.3); transform: scale(0.94); }
+#ptt-hint { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* Transcript */
+#transcript {
+  background: var(--card); border-radius: 13px; padding: 12px;
+  min-height: 100px; max-height: 200px; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid var(--border);
+}
+.tr-row { display: flex; gap: 8px; }
+.tr-icon { font-size: 15px; flex-shrink: 0; }
+.tr-text { font-size: 13px; line-height: 1.5; color: var(--text); }
+.tr-text.user { color: var(--cyan); }
+.tr-text.cmd  { color: var(--muted); font-size: 11px; }
+
+/* Quick commands */
+#quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.quick-btn {
+  padding: 12px 14px; border-radius: 11px;
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; text-align: left; transition: all 120ms ease;
+  display: flex; align-items: center; gap: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+.quick-btn:active { background: var(--card-hi); border-color: var(--border-hi); transform: scale(0.96); }
+.quick-icon { font-size: 18px; }
+
+/* ────────────────────────────────────────────────────
+   CONTROLS VIEW
+──────────────────────────────────────────────────── */
+#controls-view { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.ctrl-group { background: var(--card); border-radius: 13px; overflow: hidden; }
+.ctrl-group-label { padding: 12px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing:.07em; text-transform:uppercase; color: var(--muted); }
+.ctrl-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.04);
+  cursor: pointer; transition: background 100ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ctrl-row:last-child { border-bottom: none; }
+.ctrl-row:active { background: rgba(255,255,255,.05); }
+.ctrl-icon { font-size: 22px; width: 36px; text-align: center; flex-shrink: 0; }
+.ctrl-info { flex: 1; }
+.ctrl-label { font-size: 15px; font-weight: 600; }
+.ctrl-desc  { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.ctrl-hand  { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+.ctrl-hand.right { background: rgba(0,210,255,.1); color: var(--cyan); }
+.ctrl-hand.left  { background: rgba(108,92,231,.1); color: #a78bfa; }
+
+/* Large nav buttons */
+.nav-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nav-action-btn {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 13px; padding: 18px 14px;
+  cursor: pointer; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transition: all 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-action-btn:active { transform: scale(0.94); border-color: var(--border-hi); background: var(--card-hi); }
+.nav-action-btn.nav:active  { border-color: rgba(0,210,255,.4); background: rgba(0,210,255,.06); }
+.nav-action-btn.cmd:active  { border-color: rgba(108,92,231,.4); background: rgba(108,92,231,.06); }
+.nav-action-btn.good:active { border-color: rgba(34,197,94,.4);  background: rgba(34,197,94,.06); }
+.nav-action-btn.bad:active  { border-color: rgba(239,68,68,.4);  background: rgba(239,68,68,.06); }
+.nab-icon  { font-size: 32px; }
+.nab-label { font-size: 13px; font-weight: 700; color: var(--text); }
+.nab-sub   { font-size: 11px; color: var(--muted); }
+
+/* ────────────────────────────────────────────────────
+   SETTINGS VIEW
+──────────────────────────────────────────────────── */
+#settings-view { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+.settings-group { background: var(--card); border-radius: 13px; overflow: hidden; }
+.sg-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.sg-row:last-child { border-bottom: none; }
+.sg-icon { font-size: 20px; width: 30px; text-align: center; flex-shrink: 0; }
+.sg-info { flex: 1; }
+.sg-label { font-size: 15px; font-weight: 500; }
+.sg-desc  { font-size: 12px; color: var(--muted); margin-top: 1px; }
+/* iOS toggle */
+.ios-toggle {
+  width: 51px; height: 31px; border-radius: 16px;
+  background: rgba(255,255,255,.12); border: none; cursor: pointer;
+  position: relative; transition: background 200ms ease; flex-shrink: 0;
+}
+.ios-toggle.on { background: #22c55e; }
+.ios-toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 27px; height: 27px; border-radius: 14px;
+  background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  transition: transform 200ms cubic-bezier(.4,0,.2,1);
+}
+.ios-toggle.on::after { transform: translateX(20px); }
+/* Input */
+.sg-input-row { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.04); }
+.sg-input-row:last-child { border-bottom: none; }
+.sg-input-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; letter-spacing:.03em; }
+.ios-input {
+  width: 100%; padding: 10px 14px; border-radius: 10px;
+  background: rgba(255,255,255,.06); border: 1px solid var(--border);
+  color: var(--text); font-family: -apple-system,'SF Pro Text',system-ui,sans-serif;
+  font-size: 15px; outline: none;
+  -webkit-appearance: none;
+}
+.ios-input:focus { border-color: rgba(108,92,231,.5); background: rgba(108,92,231,.06); }
+/* Large connect button */
+#connect-btn {
+  width: 100%; padding: 16px; border-radius: 13px;
+  background: var(--accent); border: none; color: #fff;
+  font-family: inherit; font-size: 17px; font-weight: 700;
+  letter-spacing: -0.01em; cursor: pointer;
+  transition: all 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+#connect-btn:active { opacity: 0.85; transform: scale(0.97); }
+#connect-btn.connected { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.4); color: var(--waiting); }
+
+/* ── Bottom tab bar (iOS style) ── */
+#tab-bar {
+  display: flex; background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-top: 1px solid var(--border);
+  padding-bottom: var(--safe-bottom);
+  flex-shrink: 0;
+}
+.tab-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding: 8px 4px 4px; gap: 3px;
+  background: none; border: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: all 120ms ease;
+}
+.tab-item:active { opacity: 0.6; }
+.tab-icon { font-size: 22px; }
+.tab-label { font-size: 10px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
+.tab-item.active .tab-label { color: var(--accent); }
+.tab-item.active .tab-icon { filter: drop-shadow(0 0 4px var(--accent)); }
+
+/* ── Toast (iOS style) ── */
+#toast {
+  position: fixed; top: calc(var(--safe-top) + 54px); left: 50%; transform: translateX(-50%) translateY(-4px);
+  background: rgba(22,27,34,0.95);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 20px; padding: 9px 20px;
+  font-size: 14px; font-weight: 600;
+  opacity: 0; transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none; white-space: nowrap; z-index: 1000;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* State badge colours */
+.bg-waiting    { background:rgba(239,68,68,.12);  color:var(--waiting); }
+.bg-working    { background:rgba(34,197,94,.12);  color:var(--working); }
+.bg-permission { background:rgba(249,115,22,.14); color:var(--permission); }
+.bg-done       { background:rgba(59,130,246,.12); color:var(--done); }
+.bg-error      { background:rgba(239,68,68,.14);  color:var(--error); }
+.bg-idle       { background:rgba(75,85,99,.15);   color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Status bar spacer -->
+  <div id="status-spacer"></div>
+
+  <!-- Navigation bar -->
+  <div id="navbar">
+    <button class="nav-btn" onclick="navBack()">‹ Back</button>
+    <div class="nav-title"><div class="nav-dot"></div>gmux</div>
+    <div id="conn-badge"><div id="conn-dot"></div><span id="conn-label">offline</span></div>
+  </div>
+
+  <!-- Scroll content -->
+  <div id="scroll-content">
+
+    <!-- Segment control -->
+    <div id="segment-wrap">
+      <div id="segment">
+        <button class="seg-btn active" onclick="switchTab('agents')">Agents</button>
+        <button class="seg-btn" onclick="switchTab('voice')">Voice</button>
+        <button class="seg-btn" onclick="switchTab('controls')">Controls</button>
+        <button class="seg-btn" onclick="switchTab('settings')">Settings</button>
+      </div>
+    </div>
+
+    <!-- AGENTS -->
+    <div id="agents-view">
+      <div id="agent-detail" class="agent-detail"></div>
+      <div id="agent-group-list"></div>
+    </div>
+
+    <!-- VOICE -->
+    <div id="voice-view" style="display:none">
+      <div class="voice-target-row" id="voice-target-row">
+        <div class="vt-dot" id="vt-dot" style="background:var(--muted)"></div>
+        <div>
+          <div class="vt-label">Voice target</div>
+          <div class="vt-name" id="vt-name">none selected</div>
+        </div>
+      </div>
+
+      <canvas id="waveform-canvas" height="70"></canvas>
+
+      <div id="ptt-area">
+        <div id="ptt-ring">
+          <button id="ptt-inner"
+            ontouchstart="startPTT(event)" ontouchend="stopPTT(event)"
+            onmousedown="startPTT(event)" onmouseup="stopPTT(event)">🎙</button>
+        </div>
+        <span id="ptt-hint">Hold to talk</span>
+      </div>
+
+      <div id="transcript"></div>
+
+      <div class="ctrl-group-label" style="padding:0 0 8px">Quick commands</div>
+      <div id="quick-grid">
+        <button class="quick-btn" onclick="quickCmd('Next red','⚡')"><span class="quick-icon">⚡</span>Next red</button>
+        <button class="quick-btn" onclick="quickCmd('Approve','✓')"><span class="quick-icon">✓</span>Approve</button>
+        <button class="quick-btn" onclick="quickCmd('Summarise','📝')"><span class="quick-icon">📝</span>Summarise</button>
+        <button class="quick-btn" onclick="quickCmd('Show status','📊')"><span class="quick-icon">📊</span>Status</button>
+        <button class="quick-btn" onclick="quickCmd('Next window','→')"><span class="quick-icon">→</span>Next</button>
+        <button class="quick-btn" onclick="quickCmd('Pause','⏸')"><span class="quick-icon">⏸</span>Pause</button>
+      </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div id="controls-view" style="display:none">
+      <div class="ctrl-group-label">Navigate — Right hand</div>
+      <div class="nav-btn-grid">
+        <button class="nav-action-btn nav" onclick="doAction('next')">
+          <span class="nab-icon">→</span>
+          <span class="nab-label">Next</span>
+          <span class="nab-sub">Swipe right</span>
+        </button>
+        <button class="nav-action-btn nav" onclick="doAction('prev')">
+          <span class="nab-icon">←</span>
+          <span class="nab-label">Prev</span>
+          <span class="nab-sub">Swipe left</span>
+        </button>
+        <button class="nav-action-btn nav" onclick="doAction('scroll-up')">
+          <span class="nab-icon">↑</span>
+          <span class="nab-label">Scroll up</span>
+          <span class="nab-sub">Swipe up</span>
+        </button>
+        <button class="nav-action-btn nav" onclick="doAction('scroll-down')">
+          <span class="nab-icon">↓</span>
+          <span class="nab-label">Scroll down</span>
+          <span class="nab-sub">Swipe down</span>
+        </button>
+      </div>
+
+      <div class="ctrl-group-label" style="margin-top:4px">Command — Left hand</div>
+      <div class="nav-btn-grid">
+        <button class="nav-action-btn cmd" onclick="doAction('jump')">
+          <span class="nab-icon">⚡</span>
+          <span class="nab-label">Jump waiting</span>
+          <span class="nab-sub">Three fingers</span>
+        </button>
+        <button class="nav-action-btn cmd" onclick="doAction('voice')">
+          <span class="nab-icon">🎙</span>
+          <span class="nab-label">Voice</span>
+          <span class="nab-sub">Point ☝</span>
+        </button>
+        <button class="nav-action-btn good" onclick="doAction('approve')">
+          <span class="nab-icon">👍</span>
+          <span class="nab-label">Approve</span>
+          <span class="nab-sub">Thumbs up</span>
+        </button>
+        <button class="nav-action-btn bad" onclick="doAction('reject')">
+          <span class="nab-icon">👎</span>
+          <span class="nab-label">Reject</span>
+          <span class="nab-sub">Thumbs down</span>
+        </button>
+      </div>
+
+      <div class="ctrl-group" style="margin-top:4px">
+        <div class="ctrl-group-label">Gesture reference</div>
+        <div class="ctrl-row"><span class="ctrl-icon">👋</span><div class="ctrl-info"><div class="ctrl-label">Open palm</div><div class="ctrl-desc">Show gesture cheat sheet</div></div><span class="ctrl-hand left">Left</span></div>
+        <div class="ctrl-row"><span class="ctrl-icon">✊</span><div class="ctrl-info"><div class="ctrl-label">Fist</div><div class="ctrl-desc">Reserved / custom action</div></div><span class="ctrl-hand left">Left</span></div>
+        <div class="ctrl-row"><span class="ctrl-icon">✌️</span><div class="ctrl-info"><div class="ctrl-label">Peace</div><div class="ctrl-desc">Toggle always-listen voice</div></div><span class="ctrl-hand left">Left</span></div>
+        <div class="ctrl-row"><span class="ctrl-icon">🤏</span><div class="ctrl-info"><div class="ctrl-label">Pinch</div><div class="ctrl-desc">Select / configurable zoom</div></div><span class="ctrl-hand right">Right</span></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="settings-view" style="display:none">
+      <div class="settings-group">
+        <div class="sg-input-row">
+          <div class="sg-input-label">Desktop IP or hostname</div>
+          <input class="ios-input" type="text" id="host-input" placeholder="192.168.1.x or gmux.local" value="192.168.1.100" inputmode="url"/>
+        </div>
+        <div class="sg-input-row">
+          <div class="sg-input-label">Port</div>
+          <input class="ios-input" type="number" id="port-input" placeholder="8768" value="8768" inputmode="numeric"/>
+        </div>
+      </div>
+
+      <button id="connect-btn" onclick="toggleConnect()">Connect to gmux</button>
+
+      <div class="settings-group">
+        <div class="sg-row">
+          <span class="sg-icon">📳</span>
+          <div class="sg-info"><div class="sg-label">Haptic feedback</div><div class="sg-desc">Tap response on actions</div></div>
+          <button class="ios-toggle on" id="tog-haptic" onclick="toggleSetting('haptic')"></button>
+        </div>
+        <div class="sg-row">
+          <span class="sg-icon">🔔</span>
+          <div class="sg-info"><div class="sg-label">Permission alerts</div><div class="sg-desc">Notify when agent needs approval</div></div>
+          <button class="ios-toggle on" id="tog-notify" onclick="toggleSetting('notify')"></button>
+        </div>
+        <div class="sg-row">
+          <span class="sg-icon">🌙</span>
+          <div class="sg-info"><div class="sg-label">Keep screen awake</div><div class="sg-desc">While app is active</div></div>
+          <button class="ios-toggle on" id="tog-screen" onclick="toggleSetting('screen')"></button>
+        </div>
+        <div class="sg-row">
+          <span class="sg-icon">🎙</span>
+          <div class="sg-info"><div class="sg-label">Wake word detection</div><div class="sg-desc">"kalarc" triggers listen mode</div></div>
+          <button class="ios-toggle" id="tog-wake" onclick="toggleSetting('wake')"></button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="sg-row">
+          <span class="sg-icon">ℹ</span>
+          <div class="sg-info"><div class="sg-label">gmux for iOS</div><div class="sg-desc">v0.1.0 · companion app</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom padding for tab bar -->
+    <div style="height:20px"></div>
+  </div><!-- /scroll-content -->
+
+  <!-- iOS tab bar -->
+  <div id="tab-bar">
+    <button class="tab-item active" id="tab-agents" onclick="switchTab('agents')">
+      <span class="tab-icon">🤖</span>
+      <span class="tab-label">Agents</span>
+    </button>
+    <button class="tab-item" id="tab-voice" onclick="switchTab('voice')">
+      <span class="tab-icon">🎙</span>
+      <span class="tab-label">Voice</span>
+    </button>
+    <button class="tab-item" id="tab-controls" onclick="switchTab('controls')">
+      <span class="tab-icon">✋</span>
+      <span class="tab-label">Controls</span>
+    </button>
+    <button class="tab-item" id="tab-settings" onclick="switchTab('settings')">
+      <span class="tab-icon">⚙️</span>
+      <span class="tab-label">Settings</span>
+    </button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────────────────
+const AGENTS = [
+  { id:'a1', name:'volkus',   state:'working',    todos:[6,8], ram:'1.2 GB', tokens:'847k', tool:'bash: node build.js',  window:1 },
+  { id:'a2', name:'sadiya',   state:'waiting',    todos:[3,5], ram:'780 MB', tokens:'312k', tool:null,                   window:2 },
+  { id:'a3', name:'research', state:'permission', todos:[2,4], ram:'540 MB', tokens:'1.1m', tool:'edit: src/main.rs',    window:3 },
+  { id:'a4', name:'deepseek', state:'working',    todos:[7,9], ram:'2.1 GB', tokens:'2.3m', tool:'glob: src/**/*.ts',   window:4 },
+  { id:'a5', name:'deploy',   state:'done',       todos:[5,5], ram:'3.4 GB', tokens:'430k', tool:null,                   window:5 },
+  { id:'a6', name:'gemini',   state:'idle',       todos:[0,0], ram:'220 MB', tokens:'0',    tool:null,                   window:6 },
+];
+const SC = { waiting:'#ef4444', working:'#22c55e', permission:'#f97316', done:'#3b82f6', error:'#ef4444', idle:'#4b5563' };
+const col = s => SC[s]||'#4b5563';
+
+let selectedId  = 'a2';
+let pttActive   = false;
+let connected   = false;
+let currentTab  = 'agents';
+const settings  = { haptic:true, notify:true, screen:true, wake:false };
+let expandedId  = null;
+
+// ── Tab switching ──────────────────────────────────────────────────
+function switchTab(name) {
+  currentTab = name;
+  ['agents','voice','controls','settings'].forEach(t => {
+    document.getElementById(t+'-view').style.display = t===name ? '' : 'none';
+    document.getElementById('tab-'+t)?.classList.toggle('active', t===name);
+    document.querySelector(`.seg-btn[onclick="switchTab('${t}')"]`)?.classList.toggle('active', t===name);
+  });
+  document.getElementById('scroll-content').scrollTop = 0;
+  if (name==='agents') renderAgents();
+  if (name==='voice')  { renderVoiceTarget(); renderTranscriptHint(); }
+}
+
+// ── Back nav ───────────────────────────────────────────────────────
+function navBack() {
+  if (expandedId) { expandedId=null; renderAgents(); } else { history.back(); }
+}
+
+// ── Render agents ─────────────────────────────────────────────────
+function renderAgents() {
+  // Detail card
+  const detail = document.getElementById('agent-detail');
+  const a = expandedId ? AGENTS.find(x=>x.id===expandedId) : null;
+  if (a) {
+    detail.classList.add('visible');
+    const done=a.todos[0],total=a.todos[1],pct=total>0?(done/total*100).toFixed(0):0;
+    const permRow = a.state==='permission' ? `
+      <div style="display:flex;gap:8px">
+        <button class="perm-btn approve" style="flex:1;border-radius:10px" onclick="approveAgent('${a.id}')">✓ Approve</button>
+        <button class="perm-btn reject"  style="flex:1;border-radius:10px" onclick="rejectAgent('${a.id}')">✗ Reject</button>
+      </div>` : '';
+    detail.innerHTML = `
+      <div class="detail-header">
+        <div class="detail-dot" style="background:${col(a.state)};${a.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></div>
+        <div class="detail-name">${a.name}</div>
+        <span class="detail-badge bg-${a.state}">${a.state}</span>
+      </div>
+      ${permRow}
+      ${total>0?`<div class="detail-progress">
+        <div class="dp-label"><span>Todos</span><span>${done} / ${total}</span></div>
+        <div class="dp-track"><div class="dp-fill ${a.state==='working'?'working':''}" style="width:${pct}%"></div></div>
+      </div>`:''}
+      <div class="detail-metrics">
+        <div class="dm"><div class="dm-label">RAM</div><div class="dm-value ${parseFloat(a.ram)>2?'hot':''}">${a.ram}</div></div>
+        <div class="dm"><div class="dm-label">Tokens</div><div class="dm-value">${a.tokens}</div></div>
+        <div class="dm"><div class="dm-label">Win</div><div class="dm-value">${a.window}</div></div>
+      </div>
+      <div class="detail-tool">
+        <div class="dt-dot ${a.state==='working'?'working':''}"></div>
+        <div class="dt-text">${a.tool||'—'}</div>
+      </div>`;
+  } else {
+    detail.classList.remove('visible');
+    detail.innerHTML = '';
+  }
+
+  // Agent list
+  const list = document.getElementById('agent-group-list');
+  list.innerHTML = `<div class="agent-group">${AGENTS.map(a => {
+    const permRow = a.state==='permission' ? `
+      <div class="perm-action-row">
+        <button class="perm-btn approve" onclick="event.stopPropagation();approveAgent('${a.id}')">✓ Approve</button>
+        <button class="perm-btn reject"  onclick="event.stopPropagation();rejectAgent('${a.id}')">✗ Reject</button>
+      </div>` : '';
+    const badge = a.state!=='permission'
+      ? `<span class="ar-badge bg-${a.state}">${a.state}</span>` : '';
+    return `<div>
+      <div class="agent-row ${a.id===selectedId?'selected':''}" onclick="selectAgent('${a.id}')">
+        <div class="ar-state" style="background:${col(a.state)};${a.state==='working'?'animation:working-dot 1.4s ease-in-out infinite':''}"></div>
+        <div class="ar-info">
+          <div class="ar-name">${a.name}</div>
+          <div class="ar-detail">${a.tool||('win '+a.window+' · '+a.ram)}</div>
+        </div>
+        ${badge}
+        <span class="ar-chevron">${a.id===expandedId?'∨':'›'}</span>
+      </div>
+      ${permRow}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function selectAgent(id) {
+  if (expandedId === id) { expandedId = null; }
+  else { expandedId = id; }
+  selectedId = id;
+  haptic('light');
+  renderAgents();
+  renderVoiceTarget();
+}
+
+function approveAgent(id) {
+  const a=AGENTS.find(x=>x.id===id);
+  if (a) { a.state='working'; a.tool='bash: approved...'; expandedId=null; renderAgents(); haptic('medium'); showToast('✓ Approved'); }
+}
+function rejectAgent(id) {
+  const a=AGENTS.find(x=>x.id===id);
+  if (a) { a.state='waiting'; a.tool=null; expandedId=null; renderAgents(); haptic(); showToast('✗ Rejected'); }
+}
+
+// ── Voice ─────────────────────────────────────────────────────────
+function renderVoiceTarget() {
+  const a=AGENTS.find(x=>x.id===selectedId);
+  document.getElementById('vt-name').textContent = a ? a.name : 'none';
+  const dot = document.getElementById('vt-dot');
+  dot.style.background = a ? col(a.state) : 'var(--muted)';
+  dot.className = 'vt-dot' + (pttActive?' listening':'');
+  const row = document.getElementById('voice-target-row');
+  row.classList.toggle('listening', pttActive);
+}
+
+let waveData=new Array(100).fill(0), waveAnim, analyser;
+const wc=document.getElementById('waveform-canvas'), wx=wc.getContext('2d');
+function drawWave(active) {
+  const W=wc.clientWidth||300, H=70;
+  wc.width=W;
+  if (active&&analyser) {
+    const arr=new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(arr);
+    waveData.push((arr[0]-128)/128);
+  } else if (active) {
+    waveData.push((Math.random()-.5)*0.75+Math.sin(Date.now()/130)*0.3);
+  } else { waveData.push((Math.random()-.5)*0.04); }
+  if(waveData.length>W) waveData.shift();
+  wx.clearRect(0,0,W,H);
+  wx.fillStyle='rgba(255,255,255,.025)'; wx.fillRect(0,0,W,H);
+  wx.beginPath();
+  wx.strokeStyle=active?'rgba(239,68,68,.88)':'rgba(108,92,231,.45)';
+  wx.lineWidth=2; wx.shadowBlur=active?6:3;
+  wx.shadowColor=active?'rgba(239,68,68,.3)':'rgba(108,92,231,.2)';
+  const step=W/waveData.length;
+  for(let i=0;i<waveData.length;i++){
+    const x=i*step,y=H/2+waveData[i]*(H/2-8);
+    if(i===0) wx.moveTo(x,y); else wx.lineTo(x,y);
+  }
+  wx.stroke();
+  if(active) waveAnim=requestAnimationFrame(()=>drawWave(true));
+}
+
+function startPTT(e) {
+  e.preventDefault();
+  if(pttActive) return;
+  pttActive=true;
+  document.getElementById('ptt-ring').classList.add('active');
+  document.getElementById('ptt-inner').classList.add('active');
+  document.getElementById('ptt-hint').textContent='● Recording…';
+  haptic('medium');
+  drawWave(true);
+  navigator.mediaDevices?.getUserMedia({audio:true}).then(stream=>{
+    const ctx=new AudioContext();
+    analyser=ctx.createAnalyser(); analyser.fftSize=256;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+  }).catch(()=>{analyser=null;});
+  renderVoiceTarget();
+}
+function stopPTT(e) {
+  e?.preventDefault();
+  if(!pttActive) return;
+  pttActive=false;
+  document.getElementById('ptt-ring').classList.remove('active');
+  document.getElementById('ptt-inner').classList.remove('active');
+  document.getElementById('ptt-hint').textContent='Hold to talk';
+  cancelAnimationFrame(waveAnim); drawWave(false);
+  analyser=null; haptic('light');
+  const a=AGENTS.find(x=>x.id===selectedId);
+  if(a) { addTranscript('user','(voice → '+a.name+')'); setTimeout(()=>addTranscript('agent','Processing…'),700); }
+  renderVoiceTarget();
+}
+
+function renderTranscriptHint() {
+  const el=document.getElementById('transcript');
+  if(!el.children.length) {
+    el.innerHTML='<div class="tr-row"><span class="tr-icon">💡</span><span class="tr-text">Select an agent, then hold the mic to speak.</span></div>';
+  }
+}
+function addTranscript(role,text) {
+  const el=document.getElementById('transcript');
+  const d=document.createElement('div'); d.className='tr-row';
+  d.innerHTML=`<span class="tr-icon">${role==='user'?'🗣️':'🤖'}</span><span class="tr-text ${role}">${text}</span>`;
+  el.appendChild(d); el.scrollTop=el.scrollHeight;
+}
+
+function quickCmd(cmd) {
+  const a=AGENTS.find(x=>x.id===selectedId);
+  addTranscript('user',cmd+(a?' → '+a.name:''));
+  haptic(); showToast('Sent: '+cmd);
+  setTimeout(()=>{ if(a) addTranscript('agent','Processing: '+cmd+'…'); },600);
+}
+
+// ── Control actions ───────────────────────────────────────────────
+const actionLabel={next:'→ next window',prev:'← prev window','scroll-up':'↑ scroll up','scroll-down':'↓ scroll down',jump:'⚡ jump to waiting',voice:'🎙 voice toggle',approve:'✓ approve',reject:'✗ reject'};
+function doAction(name) {
+  haptic();
+  showToast(actionLabel[name]||name);
+  if(name==='next'){const i=AGENTS.findIndex(a=>a.id===selectedId);selectAgent(AGENTS[(i+1)%AGENTS.length].id);}
+  if(name==='prev'){const i=AGENTS.findIndex(a=>a.id===selectedId);selectAgent(AGENTS[(i-1+AGENTS.length)%AGENTS.length].id);}
+  if(name==='jump'){const r=AGENTS.find(a=>a.state==='waiting'||a.state==='permission');if(r)selectAgent(r.id);}
+  if(name==='approve'){const a=AGENTS.find(x=>x.id===selectedId);if(a&&a.state==='permission')approveAgent(a.id);}
+  if(name==='reject'){const a=AGENTS.find(x=>x.id===selectedId);if(a&&a.state==='permission')rejectAgent(a.id);}
+}
+
+// ── Settings ──────────────────────────────────────────────────────
+function toggleSetting(key) {
+  settings[key]=!settings[key];
+  document.getElementById('tog-'+key).classList.toggle('on',settings[key]);
+}
+function toggleConnect() {
+  connected=!connected;
+  const btn=document.getElementById('connect-btn');
+  const dot=document.getElementById('conn-dot');
+  if(connected){
+    btn.textContent='Disconnect'; btn.classList.add('connected');
+    dot.className='live'; document.getElementById('conn-label').textContent='online';
+    showToast('Connected · '+document.getElementById('host-input').value);
+    setInterval(mockPoll,4000);
+  } else {
+    btn.textContent='Connect to gmux'; btn.classList.remove('connected');
+    dot.className=''; document.getElementById('conn-label').textContent='offline';
+    showToast('Disconnected');
+  }
+}
+function mockPoll() {
+  const a=AGENTS[Math.floor(Math.random()*AGENTS.length)];
+  if(a.state==='working'&&Math.random()>.72){a.state=Math.random()>.5?'waiting':'done';a.tool=null;}
+  else if(a.state==='waiting'&&Math.random()>.8){a.state='working';a.tool='bash: running...';}
+  if(currentTab==='agents') renderAgents();
+  const perm=AGENTS.find(x=>x.state==='permission');
+  if(perm&&settings.notify&&Math.random()>.8) showToast('⚠ '+perm.name+' needs approval');
+}
+
+// ── Haptic ────────────────────────────────────────────────────────
+function haptic(type='light') {
+  if(!settings.haptic||!navigator.vibrate) return;
+  navigator.vibrate(type==='medium'?[20]:type==='heavy'?[40]:[10]);
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+let toastT;
+function showToast(msg) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),1600);
+}
+
+// ── Wake lock ─────────────────────────────────────────────────────
+async function requestWakeLock() {
+  try { if('wakeLock' in navigator&&settings.screen) await navigator.wakeLock.request('screen'); } catch(e){}
+}
+requestWakeLock();
+
+// ── Init ──────────────────────────────────────────────────────────
+renderAgents();
+drawWave(false);
+renderTranscriptHint();
+</script>
+</body>
+</html>
