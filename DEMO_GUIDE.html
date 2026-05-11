@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gmux — gesture-aware AI terminal multiplexer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:        #05060c;
+  --surface:   #0d0f1a;
+  --surface2:  #111525;
+  --green:     #00ff9f;
+  --cyan:      #00ddff;
+  --purple:    #9d5cff;
+  --orange:    #ff7a3a;
+  --text:      #e9ecf5;
+  --muted:     #5a6390;
+  --border:    rgba(255,255,255,.07);
+  --glass:     rgba(255,255,255,.04);
+  --glass2:    rgba(255,255,255,.07);
+  --font-sans: 'Space Grotesk', 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-body: 'Inter', sans-serif;
+  --radius:    14px;
+  --radius-sm: 8px;
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  overflow-x: hidden;
+}
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ═══════════════════════════════════════════════════════════════
+   ANIMATED MESH BACKGROUND
+═══════════════════════════════════════════════════════════════ */
+.mesh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.mesh-bg::before {
+  content: '';
+  position: absolute;
+  width: 900px; height: 900px;
+  top: -200px; left: -200px;
+  background: radial-gradient(circle, rgba(0,255,159,.10) 0%, transparent 65%);
+  animation: drift1 18s ease-in-out infinite alternate;
+}
+.mesh-bg::after {
+  content: '';
+  position: absolute;
+  width: 700px; height: 700px;
+  bottom: -100px; right: -100px;
+  background: radial-gradient(circle, rgba(157,92,255,.11) 0%, transparent 65%);
+  animation: drift2 22s ease-in-out infinite alternate;
+}
+.mesh-orb {
+  position: absolute;
+  width: 600px; height: 600px;
+  top: 40%; left: 55%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(0,221,255,.07) 0%, transparent 65%);
+  animation: drift3 14s ease-in-out infinite alternate;
+}
+@keyframes drift1 {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(80px, 60px) scale(1.12); }
+}
+@keyframes drift2 {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(-60px, -80px) scale(1.08); }
+}
+@keyframes drift3 {
+  from { transform: translate(-50%,-50%) scale(1); }
+  to   { transform: translate(-45%,-55%) scale(1.15); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LAYOUT WRAPPER
+═══════════════════════════════════════════════════════════════ */
+.page { position: relative; z-index: 1; }
+
+/* ═══════════════════════════════════════════════════════════════
+   TOP NAV
+═══════════════════════════════════════════════════════════════ */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0 2.5rem;
+  height: 58px;
+  background: rgba(5,6,12,.80);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-logo {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--green);
+  letter-spacing: .05em;
+  text-shadow: 0 0 18px rgba(0,255,159,.4);
+  margin-right: auto;
+}
+.nav-logo span { color: var(--muted); font-weight: 400; font-size: .85rem; margin-left: .5rem; }
+nav a.nav-link {
+  font-family: var(--font-sans);
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  transition: color .2s;
+  padding: .25rem 0;
+  border-bottom: 2px solid transparent;
+}
+nav a.nav-link:hover,
+nav a.nav-link.active { color: var(--text); border-bottom-color: var(--green); text-decoration: none; }
+.nav-cta {
+  font-family: var(--font-sans);
+  font-size: .8rem;
+  font-weight: 600;
+  padding: .45rem 1rem;
+  border-radius: 6px;
+  background: rgba(0,255,159,.12);
+  border: 1px solid rgba(0,255,159,.3);
+  color: var(--green);
+  transition: background .2s, border-color .2s;
+  white-space: nowrap;
+}
+.nav-cta:hover { background: rgba(0,255,159,.2); border-color: rgba(0,255,159,.5); text-decoration: none; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SECTIONS
+═══════════════════════════════════════════════════════════════ */
+section {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 6rem 2rem;
+}
+section:first-child { padding-top: 7rem; }
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: .75rem;
+}
+h2 {
+  font-family: var(--font-sans);
+  font-size: 2.1rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  line-height: 1.25;
+}
+h3 {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: .6rem;
+}
+
+/* Fade-in on scroll */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity .55s ease, transform .55s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GLASS CARD
+═══════════════════════════════════════════════════════════════ */
+.card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  padding: 1.5rem;
+}
+.card-sm {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(12px);
+  padding: 1rem 1.2rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ① HERO
+═══════════════════════════════════════════════════════════════ */
+#hero {
+  text-align: center;
+  padding-top: 9rem;
+  padding-bottom: 5rem;
+}
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--green);
+  background: rgba(0,255,159,.08);
+  border: 1px solid rgba(0,255,159,.2);
+  padding: .35rem .85rem;
+  border-radius: 999px;
+  margin-bottom: 2rem;
+}
+.hero-eyebrow::before { content: '⬤'; font-size: .45rem; animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .3; }
+}
+.hero-title {
+  font-family: var(--font-sans);
+  font-size: clamp(3.2rem, 8vw, 5.5rem);
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+  margin-bottom: 1rem;
+}
+.hero-title .brand {
+  background: linear-gradient(135deg, var(--green) 0%, var(--cyan) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  font-size: 1.15rem;
+  color: var(--muted);
+  max-width: 540px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.6;
+}
+.hero-pills {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin-bottom: 2.8rem;
+}
+.pill {
+  font-family: var(--font-sans);
+  font-size: .82rem;
+  font-weight: 500;
+  padding: .45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--glass2);
+  color: var(--text);
+}
+.hero-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-family: var(--font-sans);
+  font-size: .95rem;
+  font-weight: 600;
+  padding: .75rem 1.8rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--green), var(--cyan));
+  color: #05060c;
+  transition: opacity .2s, transform .2s;
+  box-shadow: 0 0 32px rgba(0,255,159,.2);
+}
+.btn-primary:hover { opacity: .9; transform: translateY(-1px); text-decoration: none; }
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-family: var(--font-sans);
+  font-size: .9rem;
+  font-weight: 500;
+  padding: .7rem 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--glass);
+  transition: color .2s, border-color .2s;
+}
+.btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,.18); text-decoration: none; }
+
+/* Terminal mock in hero */
+.hero-terminal {
+  margin: 3.5rem auto 0;
+  max-width: 680px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  text-align: left;
+  box-shadow: 0 24px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(0,255,159,.04);
+}
+.terminal-bar {
+  background: rgba(255,255,255,.04);
+  border-bottom: 1px solid var(--border);
+  padding: .65rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.t-dot { width: 10px; height: 10px; border-radius: 50%; }
+.t-dot.r { background: #ff5f57; }
+.t-dot.y { background: #ffbd2e; }
+.t-dot.g { background: #28ca41; }
+.terminal-title { font-family: var(--font-mono); font-size: .72rem; color: var(--muted); margin-left: auto; }
+.terminal-body { padding: 1.2rem 1.4rem; font-family: var(--font-mono); font-size: .82rem; line-height: 1.8; }
+.t-prompt { color: var(--green); }
+.t-cmd { color: var(--text); }
+.t-out { color: var(--muted); }
+.t-ok { color: var(--green); }
+.t-warn { color: var(--orange); }
+.t-info { color: var(--cyan); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ② WHAT IS GMUX
+═══════════════════════════════════════════════════════════════ */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+.what-desc p { color: #a8aec8; line-height: 1.75; margin-bottom: 1rem; }
+.what-desc p strong { color: var(--text); }
+
+/* Agent status cards */
+.agent-grid { display: flex; flex-direction: column; gap: .6rem; }
+.agent-card {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem 1rem;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: background .2s;
+}
+.agent-card:hover { background: rgba(255,255,255,.06); }
+.state-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-green  { background: #2ecc71; box-shadow: 0 0 6px rgba(46,204,113,.6); }
+.dot-orange { background: var(--orange); box-shadow: 0 0 6px rgba(255,122,58,.6); }
+.dot-blue   { background: var(--cyan); box-shadow: 0 0 6px rgba(0,221,255,.5); }
+.dot-red    { background: #e74c3c; box-shadow: 0 0 6px rgba(231,76,60,.5); }
+.agent-name {
+  font-family: var(--font-mono);
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 70px;
+}
+.status-badge {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  font-weight: 700;
+  padding: .15rem .55rem;
+  border-radius: 4px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.badge-working  { background: rgba(46,204,113,.12); color: #2ecc71; border: 1px solid rgba(46,204,113,.25); }
+.badge-approve  { background: rgba(255,122,58,.12); color: var(--orange); border: 1px solid rgba(255,122,58,.3); }
+.badge-done     { background: rgba(0,221,255,.10); color: var(--cyan); border: 1px solid rgba(0,221,255,.25); }
+.badge-waiting  { background: rgba(231,76,60,.10); color: #e74c3c; border: 1px solid rgba(231,76,60,.25); }
+.agent-meta { flex: 1; overflow: hidden; }
+.agent-last {
+  font-size: .78rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.model-tag {
+  font-family: var(--font-mono);
+  font-size: .65rem;
+  color: var(--muted);
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--border);
+  padding: .1rem .45rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ③ QUICK START STEPPER
+═══════════════════════════════════════════════════════════════ */
+.stepper { display: flex; flex-direction: column; gap: 0; }
+.step {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  position: relative;
+}
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 44px;
+  width: 2px;
+  height: calc(100% - 8px);
+  background: linear-gradient(to bottom, rgba(0,255,159,.25), rgba(0,255,159,.04));
+}
+.step-num {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: rgba(0,255,159,.08);
+  border: 2px solid rgba(0,255,159,.3);
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: .85rem;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.step-body { padding: .4rem 0 2rem; }
+.step-title { font-family: var(--font-sans); font-weight: 600; font-size: 1rem; margin-bottom: .3rem; }
+.step-desc { font-size: .88rem; color: var(--muted); }
+code {
+  font-family: var(--font-mono);
+  font-size: .82em;
+  background: rgba(255,255,255,.07);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .1em .45em;
+  color: var(--cyan);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ④ GESTURE CARDS
+═══════════════════════════════════════════════════════════════ */
+.gesture-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .85rem;
+}
+.gesture-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  transition: background .2s, border-color .2s, transform .2s;
+}
+.gesture-card:hover {
+  background: var(--glass2);
+  border-color: rgba(0,255,159,.15);
+  transform: translateY(-2px);
+}
+.gesture-emoji { font-size: 1.9rem; line-height: 1; }
+.gesture-name {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: .88rem;
+  line-height: 1.3;
+}
+.gesture-desc { font-size: .78rem; color: var(--muted); line-height: 1.5; }
+.hand-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: .65rem;
+  font-weight: 700;
+  padding: .15rem .5rem;
+  border-radius: 3px;
+  letter-spacing: .05em;
+  width: fit-content;
+  margin-top: auto;
+}
+.hand-right  { background: rgba(0,255,159,.10); color: var(--green); border: 1px solid rgba(0,255,159,.2); }
+.hand-left   { background: rgba(157,92,255,.10); color: var(--purple); border: 1px solid rgba(157,92,255,.2); }
+.hand-both   { background: rgba(0,221,255,.10); color: var(--cyan); border: 1px solid rgba(0,221,255,.2); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ⑤ VOICE SECTION
+═══════════════════════════════════════════════════════════════ */
+.voice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.voice-card-title {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: .9rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.voice-feature-list { list-style: none; display: flex; flex-direction: column; gap: .55rem; }
+.voice-feature-list li {
+  font-size: .86rem;
+  color: #a8aec8;
+  padding-left: 1.2rem;
+  position: relative;
+}
+.voice-feature-list li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  color: var(--green);
+  font-size: .7rem;
+  top: .15em;
+}
+.voice-phrase {
+  margin-top: .85rem;
+  padding: .65rem 1rem;
+  background: rgba(0,255,159,.04);
+  border-left: 3px solid var(--green);
+  border-radius: 0 6px 6px 0;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  color: var(--text);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ⑥ AGENT TYPES & YOLO MODES
+═══════════════════════════════════════════════════════════════ */
+.agents-yolo { display: grid; grid-template-columns: 1fr 1.8fr; gap: 2rem; }
+.agent-types-list { display: flex; flex-direction: column; gap: .55rem; }
+.agent-type-item {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  font-size: .9rem;
+  color: #a8aec8;
+  padding: .5rem .75rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.02);
+  border: 1px solid var(--border);
+}
+.agent-type-icon { font-size: 1.1rem; }
+.yolo-cards { display: flex; flex-direction: column; gap: .75rem; }
+.yolo-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.2rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.yolo-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: .05rem; }
+.yolo-name { font-family: var(--font-sans); font-weight: 700; font-size: .9rem; margin-bottom: .25rem; }
+.yolo-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+.yolo-card.safe   { border-color: rgba(46,204,113,.18); }
+.yolo-card.yolo-r { border-color: rgba(255,122,58,.18); }
+.yolo-card.yolo-x { border-color: rgba(231,76,60,.18); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ⑦ KEYBOARD SHORTCUTS
+═══════════════════════════════════════════════════════════════ */
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .7rem 1.2rem;
+  border-bottom: 1px solid var(--border);
+  transition: background .15s;
+}
+.shortcut-row:nth-child(even) { background: rgba(255,255,255,.015); }
+.shortcut-row:hover { background: rgba(255,255,255,.04); }
+.shortcut-row:last-child, .shortcut-row:nth-last-child(2) { border-bottom: none; }
+kbd {
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: .2rem .5rem;
+  color: var(--cyan);
+  white-space: nowrap;
+  min-width: 2rem;
+  text-align: center;
+}
+.shortcut-action { font-size: .85rem; color: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ⑧ BACKEND INTEGRATION
+═══════════════════════════════════════════════════════════════ */
+.backend-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+.backend-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.4rem;
+  transition: border-color .2s, background .2s;
+}
+.backend-card:hover { border-color: rgba(0,221,255,.18); background: var(--glass2); }
+.backend-icon {
+  width: 38px; height: 38px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  margin-bottom: .9rem;
+}
+.ic-green  { background: rgba(0,255,159,.10); }
+.ic-cyan   { background: rgba(0,221,255,.10); }
+.ic-purple { background: rgba(157,92,255,.10); }
+.backend-title { font-weight: 600; font-size: .95rem; margin-bottom: .4rem; }
+.backend-desc { font-size: .82rem; color: var(--muted); line-height: 1.6; }
+
+/* ═══════════════════════════════════════════════════════════════
+   ⑨ ARCHITECTURE DIAGRAM
+═══════════════════════════════════════════════════════════════ */
+.arch-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  font-family: var(--font-mono);
+  font-size: .85rem;
+  overflow-x: auto;
+}
+.arch-row { display: flex; align-items: center; gap: .5rem; margin-bottom: .85rem; flex-wrap: wrap; }
+.arch-row:last-child { margin-bottom: 0; }
+.arch-box {
+  padding: .4rem .9rem;
+  border-radius: 6px;
+  font-size: .8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ab-green  { background: rgba(0,255,159,.10); border: 1px solid rgba(0,255,159,.25); color: var(--green); }
+.ab-cyan   { background: rgba(0,221,255,.10); border: 1px solid rgba(0,221,255,.25); color: var(--cyan); }
+.ab-purple { background: rgba(157,92,255,.10); border: 1px solid rgba(157,92,255,.25); color: var(--purple); }
+.ab-orange { background: rgba(255,122,58,.10); border: 1px solid rgba(255,122,58,.25); color: var(--orange); }
+.ab-gray   { background: rgba(255,255,255,.05); border: 1px solid var(--border); color: var(--muted); }
+.arch-arrow {
+  color: var(--muted);
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.arch-down {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-left: 2.4rem;
+  position: relative;
+}
+.arch-down::before {
+  content: '';
+  position: absolute;
+  left: 1.05rem;
+  top: -1rem;
+  height: 1.5rem;
+  width: 2px;
+  background: linear-gradient(to bottom, rgba(0,255,159,.4), rgba(0,255,159,.1));
+}
+.arch-label { font-size: .72rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 1rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   CODEBLOCK
+═══════════════════════════════════════════════════════════════ */
+.codeblock {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.2rem;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  color: var(--cyan);
+  line-height: 1.7;
+  overflow-x: auto;
+  margin-top: .6rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════════════════════════ */
+footer {
+  position: relative; z-index: 1;
+  border-top: 1px solid var(--border);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  font-size: .82rem;
+  color: var(--muted);
+}
+.footer-links { display: flex; justify-content: center; gap: 1.5rem; margin-top: .75rem; }
+.footer-links a { color: var(--muted); font-size: .8rem; }
+.footer-links a:hover { color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════════
+   DIVIDER
+═══════════════════════════════════════════════════════════════ */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .gesture-grid { grid-template-columns: repeat(2, 1fr); }
+  .backend-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 768px) {
+  nav { gap: 1rem; padding: 0 1.2rem; }
+  nav a.nav-link { display: none; }
+  .two-col, .voice-grid, .agents-yolo, .shortcuts-grid { grid-template-columns: 1fr; }
+  .gesture-grid { grid-template-columns: repeat(2, 1fr); }
+  .backend-grid { grid-template-columns: 1fr; }
+  .hero-title { font-size: clamp(2.4rem, 10vw, 3.5rem); }
+  h2 { font-size: 1.6rem; }
+  .shortcut-row:last-child { border-bottom: 1px solid var(--border); }
+  .shortcut-row:nth-last-child(2) { border-bottom: 1px solid var(--border); }
+}
+@media (max-width: 480px) {
+  .gesture-grid { grid-template-columns: 1fr; }
+  section { padding: 4rem 1.2rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- MESH BACKGROUND -->
+<div class="mesh-bg"><div class="mesh-orb"></div></div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">gmux<span>v3.0</span></div>
+  <a href="#quickstart" class="nav-link">Quick Start</a>
+  <a href="#gestures" class="nav-link">Gestures</a>
+  <a href="#voice" class="nav-link">Voice</a>
+  <a href="#shortcuts" class="nav-link">Shortcuts</a>
+  <a href="#architecture" class="nav-link">Architecture</a>
+  <a href="/v2/index.html" class="nav-cta">Open Demo →</a>
+</nav>
+
+<div class="page">
+
+<!-- ① HERO -->
+<section id="hero">
+  <div class="hero-eyebrow">Live · gesture-aware AI terminal multiplexer</div>
+  <h1 class="hero-title"><span class="brand">gmux</span></h1>
+  <p class="hero-sub">Control 10+ AI agents simultaneously.<br>Hands-free. Voice-first. Real-time.</p>
+  <div class="hero-pills">
+    <div class="pill">✋ Hand Gestures</div>
+    <div class="pill">🎙 Voice STT</div>
+    <div class="pill">🤖 10+ Agents</div>
+  </div>
+  <div class="hero-actions">
+    <a href="/v2/index.html" class="btn-primary">Open Live Demo →</a>
+    <a href="https://github.com" class="btn-ghost">View source on GitHub →</a>
+  </div>
+
+  <div class="hero-terminal reveal">
+    <div class="terminal-bar">
+      <div class="t-dot r"></div><div class="t-dot y"></div><div class="t-dot g"></div>
+      <div class="terminal-title">gmux — 4 agents active</div>
+    </div>
+    <div class="terminal-body">
+      <div><span class="t-prompt">$ </span><span class="t-cmd">gmux --launch --agents 4</span></div>
+      <div class="t-ok">✔ monitor.py started on :8769</div>
+      <div class="t-info">→ volkus     [claude-sonnet]   working</div>
+      <div class="t-warn">→ research   [claude-opus]     APPROVE NEEDED</div>
+      <div class="t-info">→ deploy     [claude-haiku]    done</div>
+      <div class="t-out">→ deepseek   [deepseek-r1]     waiting</div>
+      <div style="margin-top:.4rem"><span class="t-prompt">$ </span><span class="t-cmd">|<span style="animation:blink 1s step-end infinite;display:inline-block;color:var(--green)">█</span></span></div>
+    </div>
+  </div>
+</section>
+
+<style>@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }</style>
+
+<div class="section-divider"></div>
+
+<!-- ② WHAT IS GMUX -->
+<section id="what" class="reveal">
+  <div class="section-label">Overview</div>
+  <h2>What is gmux?</h2>
+  <div class="two-col" style="margin-top:2rem;">
+    <div class="what-desc card">
+      <p><strong>gmux</strong> is a gesture-aware AI terminal multiplexer — a unified control center for all your AI coding agents.</p>
+      <p>Monitor <strong>Claude Code</strong>, <strong>OpenCode</strong>, <strong>Aider</strong>, and <strong>Cursor</strong> in a single UI. See at a glance who's working, who needs approval, and who's erroring.</p>
+      <p>Navigate and control everything with <strong>hand gestures</strong> via MediaPipe or <strong>voice commands</strong> via browser STT or local Faster-Whisper. No mouse required.</p>
+      <p style="font-size:.83rem; color:var(--muted); background:rgba(0,255,159,.04); border-left:3px solid rgba(0,255,159,.3); padding:.6rem .9rem; border-radius:0 6px 6px 0;">Perfect for multi-monitor setups, standing desks, or hands-on hardware work where you can't reach the keyboard.</p>
+    </div>
+    <div>
+      <div class="section-label" style="margin-bottom:.9rem;">Live Agent Status</div>
+      <div class="agent-grid">
+        <div class="agent-card">
+          <div class="state-dot dot-green"></div>
+          <div class="agent-name">volkus</div>
+          <div class="status-badge badge-working">working</div>
+          <div class="agent-meta">
+            <div class="agent-last">Writing gesture-engine.js</div>
+          </div>
+          <div class="model-tag">claude-sonnet</div>
+        </div>
+        <div class="agent-card">
+          <div class="state-dot dot-orange"></div>
+          <div class="agent-name">research</div>
+          <div class="status-badge badge-approve">APPROVE</div>
+          <div class="agent-meta">
+            <div class="agent-last">Edit main.rs — confirm?</div>
+          </div>
+          <div class="model-tag">claude-opus</div>
+        </div>
+        <div class="agent-card">
+          <div class="state-dot dot-blue"></div>
+          <div class="agent-name">deploy</div>
+          <div class="status-badge badge-done">done</div>
+          <div class="agent-meta">
+            <div class="agent-last">Build passed ✔</div>
+          </div>
+          <div class="model-tag">claude-haiku</div>
+        </div>
+        <div class="agent-card">
+          <div class="state-dot dot-red"></div>
+          <div class="agent-name">deepseek</div>
+          <div class="status-badge badge-waiting">waiting</div>
+          <div class="agent-meta">
+            <div class="agent-last">Ready for next instruction</div>
+          </div>
+          <div class="model-tag">deepseek-r1</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ③ QUICK START -->
+<section id="quickstart" class="reveal">
+  <div class="section-label">Getting Started</div>
+  <h2>Quick Start</h2>
+  <p style="color:var(--muted); margin-bottom:2.5rem; max-width:540px;">Up and running in under two minutes. No install required — runs entirely in the browser.</p>
+
+  <div class="stepper">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Open the UI</div>
+        <div class="step-desc">Navigate to <code>http://localhost:5550/v2/index.html</code> in Chrome, Brave, or Chromium.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Enable gestures</div>
+        <div class="step-desc">Press <kbd>G</kbd> or click the <strong>✋ Gesture</strong> button in the toolbar.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Allow camera</div>
+        <div class="step-desc">Your browser will prompt for camera access — click <strong>Allow</strong>. The camera stream never leaves your device.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">Wave your hand</div>
+        <div class="step-desc">MediaPipe hand tracking loads (~8 MB, cached after first run). Hold your hand in front of the camera.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <div class="step-title">Enable voice</div>
+        <div class="step-desc">Press <kbd>V</kbd>, <kbd>CapsLock</kbd>, or use the left-hand ☝ Point gesture to toggle voice listening.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <div class="step-title">Speak</div>
+        <div class="step-desc">Say <span style="font-style:italic;color:var(--text);">"Approve the research agent"</span> — gmux routes the command to the right agent automatically.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ④ GESTURE REFERENCE -->
+<section id="gestures" class="reveal">
+  <div class="section-label">Gesture Reference</div>
+  <h2>Hand Gesture Controls</h2>
+  <p style="color:var(--muted); margin-bottom:2rem; max-width:560px;">All gestures are tracked in real-time via MediaPipe. No gloves, no special hardware — just your hands.</p>
+
+  <div class="gesture-grid">
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">👌</div>
+      <div class="gesture-name">Pinch + Drag</div>
+      <div class="gesture-desc">Scroll content — drag DOWN = scroll UP (inverted, like touchpad natural scrolling)</div>
+      <div class="hand-badge hand-right">RIGHT</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">👌</div>
+      <div class="gesture-name">Pinch + Release</div>
+      <div class="gesture-desc">Click or select at fingertip position — releases a tap event on the element below</div>
+      <div class="hand-badge hand-both">R / L</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">↔</div>
+      <div class="gesture-name">Two-hand Spread</div>
+      <div class="gesture-desc">Expand columns — adds more agent columns to the grid (zoom out view)</div>
+      <div class="hand-badge hand-both">BOTH</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">↔</div>
+      <div class="gesture-name">Two-hand Pinch</div>
+      <div class="gesture-desc">Collapse columns — reduces agent columns (zoom in, focus view)</div>
+      <div class="hand-badge hand-both">BOTH</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">☝</div>
+      <div class="gesture-name">Point — Left Hand</div>
+      <div class="gesture-desc">Toggle voice listening on/off — index finger extended, others curled</div>
+      <div class="hand-badge hand-left">LEFT</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">☝☝</div>
+      <div class="gesture-name">Index Tips Touch</div>
+      <div class="gesture-desc">Touch both index fingertips together to toggle voice — bilateral trigger</div>
+      <div class="hand-badge hand-both">BOTH</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">✌</div>
+      <div class="gesture-name">3-finger Swipe</div>
+      <div class="gesture-desc">Jump to next waiting / permission-needed agent in the list</div>
+      <div class="hand-badge hand-left">LEFT</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">👍</div>
+      <div class="gesture-name">Thumbs Up</div>
+      <div class="gesture-desc">Approve selected agent — or send the current voice draft message</div>
+      <div class="hand-badge hand-left">LEFT</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">🖐</div>
+      <div class="gesture-name">Open Palm</div>
+      <div class="gesture-desc">Open the agent chat panel for the currently selected session</div>
+      <div class="hand-badge hand-left">LEFT</div>
+    </div>
+
+    <div class="gesture-card">
+      <div class="gesture-emoji">☝⏳</div>
+      <div class="gesture-name">Point + Hold</div>
+      <div class="gesture-desc">Dwell-select a session pill — hold 900 ms to trigger without clicking</div>
+      <div class="hand-badge hand-both">BOTH</div>
+    </div>
+
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ⑤ VOICE -->
+<section id="voice" class="reveal">
+  <div class="section-label">Voice Commands</div>
+  <h2>Voice STT — speak to your agents</h2>
+  <p style="color:var(--muted); margin-bottom:2rem; max-width:560px;">Two STT backends, both active simultaneously. Browser STT for instant response, Faster-Whisper for accuracy.</p>
+
+  <div class="voice-grid">
+    <div class="card">
+      <div class="voice-card-title">
+        <span style="font-size:1.1rem;">🌐</span> Browser STT
+        <span style="font-size:.72rem; font-family:var(--font-mono); color:var(--muted); margin-left:auto;">Web Speech API</span>
+      </div>
+      <ul class="voice-feature-list">
+        <li>Works in Chrome, Brave, Chromium (no install)</li>
+        <li>Streaming — words appear as you speak</li>
+        <li>👍 Thumbs up gesture to send the draft</li>
+        <li>Transcription shown live in the command bar</li>
+      </ul>
+      <div class="voice-phrase">"refactor the login function" → sent to selected agent chat</div>
+    </div>
+
+    <div class="card">
+      <div class="voice-card-title">
+        <span style="font-size:1.1rem;">⚡</span> Faster-Whisper STT
+        <span style="font-size:.72rem; font-family:var(--font-mono); color:var(--muted); margin-left:auto;">local · offline</span>
+      </div>
+      <ul class="voice-feature-list">
+        <li>Better accuracy, works in any browser</li>
+        <li>Fully offline — no cloud, no API key</li>
+        <li>Connects automatically on <code>ws://localhost:8770</code></li>
+        <li>Supports English, French, Spanish, German, Japanese + 90 more</li>
+      </ul>
+      <div class="codeblock">python3.11 src-py/voice/gmux_voice_daemon.py --model base</div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ⑥ AGENT TYPES & YOLO -->
+<section id="agents" class="reveal">
+  <div class="section-label">Agents & Permissions</div>
+  <h2>Agent Types &amp; Yolo Modes</h2>
+  <div class="agents-yolo" style="margin-top:2rem;">
+    <div>
+      <h3 style="margin-bottom:1rem; color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.1em;">Supported Agents</h3>
+      <div class="agent-types-list">
+        <div class="agent-type-item"><span class="agent-type-icon">🤖</span> QalCode / OpenCode</div>
+        <div class="agent-type-item"><span class="agent-type-icon">⚡</span> Claude Code</div>
+        <div class="agent-type-item"><span class="agent-type-icon">🧠</span> Aider</div>
+        <div class="agent-type-item"><span class="agent-type-icon">🖱</span> Cursor</div>
+        <div class="agent-type-item"><span class="agent-type-icon">⬛</span> Terminal (generic)</div>
+      </div>
+    </div>
+    <div>
+      <h3 style="margin-bottom:1rem; color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.1em;">Permission Modes</h3>
+      <div class="yolo-cards">
+        <div class="yolo-card safe">
+          <div class="yolo-icon">🔒</div>
+          <div>
+            <div class="yolo-name">Safe</div>
+            <div class="yolo-desc">Asks before every tool write or execution. Maximum oversight — nothing runs without explicit approval. Best for sensitive codebases.</div>
+          </div>
+        </div>
+        <div class="yolo-card yolo-r">
+          <div class="yolo-icon">⚠️</div>
+          <div>
+            <div class="yolo-name">Yolo Restricted</div>
+            <div class="yolo-desc">Auto-approves reads and writes but blocks <code>rm -rf</code>, dangerous shell commands, and system-level writes. Sweet spot for most workflows.</div>
+          </div>
+        </div>
+        <div class="yolo-card yolo-x">
+          <div class="yolo-icon">⚡</div>
+          <div>
+            <div class="yolo-name">Yolo Extreme</div>
+            <div class="yolo-desc">Fully autonomous — no prompts, no approval gates. Use only in isolated, disposable environments (Docker, VMs). Maximum speed.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ⑦ KEYBOARD SHORTCUTS -->
+<section id="shortcuts" class="reveal">
+  <div class="section-label">Keyboard Reference</div>
+  <h2>Keyboard Shortcuts</h2>
+  <p style="color:var(--muted); margin-bottom:2rem; max-width:480px;">All gestures have keyboard equivalents for when your hands are occupied.</p>
+
+  <div class="shortcuts-grid">
+    <div class="shortcut-row"><kbd>G</kbd><div class="shortcut-action">Toggle gesture mode</div></div>
+    <div class="shortcut-row"><kbd>V</kbd><div class="shortcut-action">Toggle voice</div></div>
+    <div class="shortcut-row"><kbd>J</kbd><div class="shortcut-action">Jump to next waiting agent</div></div>
+    <div class="shortcut-row"><kbd>N</kbd><div class="shortcut-action">New agent modal</div></div>
+    <div class="shortcut-row"><kbd>Tab</kbd><div class="shortcut-action">Cycle pane: Tasks → Chat → Hardware</div></div>
+    <div class="shortcut-row"><kbd>Enter</kbd><div class="shortcut-action">Approve permission / open chat</div></div>
+    <div class="shortcut-row"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd><div class="shortcut-action">Navigate between agent panels</div></div>
+    <div class="shortcut-row"><kbd>[</kbd><kbd>]</kbd><div class="shortcut-action">Previous / next page of agents</div></div>
+    <div class="shortcut-row"><kbd>?</kbd><div class="shortcut-action">Open gesture tutorial</div></div>
+    <div class="shortcut-row"><kbd>Esc</kbd><div class="shortcut-action">Close modal / exit fullscreen</div></div>
+    <div class="shortcut-row"><kbd>CapsLock</kbd><div class="shortcut-action">Toggle voice</div></div>
+    <div class="shortcut-row"><kbd>F</kbd><div class="shortcut-action">Chat fullscreen</div></div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ⑧ BACKEND INTEGRATION -->
+<section id="backend" class="reveal">
+  <div class="section-label">Integration</div>
+  <h2>Backend Integration</h2>
+  <p style="color:var(--muted); margin-bottom:2rem; max-width:560px;">gmux exposes a full REST+SSE API for external tools, scripts, and phone remotes.</p>
+
+  <div class="backend-grid">
+    <div class="backend-card">
+      <div class="backend-icon ic-green">⚙️</div>
+      <div class="backend-title">OpenCode REST API</div>
+      <div class="backend-desc">Full HTTP+SSE integration. Auto-connects to all running OpenCode instances. Port discovered live via <code>/proc</code> inspection — no config needed.</div>
+    </div>
+    <div class="backend-card">
+      <div class="backend-icon ic-cyan">📡</div>
+      <div class="backend-title">Live State via HTTP</div>
+      <div class="backend-desc">Monitor exposes <code>/api/state</code> (JSON snapshot) and <code>/api/stream</code> (SSE event stream) on port <code>8769</code>. Accessible from any device on your network.</div>
+    </div>
+    <div class="backend-card">
+      <div class="backend-icon ic-purple">📱</div>
+      <div class="backend-title">Phone PWA</div>
+      <div class="backend-desc">Point your phone browser to <code>http://&lt;your-ip&gt;:5550/mobile/</code> for a full voice+touch remote. Approve agents, send messages — from your couch.</div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ⑨ ARCHITECTURE -->
+<section id="architecture" class="reveal">
+  <div class="section-label">Architecture</div>
+  <h2>Data Flow</h2>
+  <p style="color:var(--muted); margin-bottom:2rem; max-width:560px;">Clean separation between agent monitoring, state persistence, and the UI layer.</p>
+
+  <div class="arch-card">
+    <div class="arch-label">// gmux architecture — data flow</div>
+
+    <div class="arch-row">
+      <div class="arch-box ab-green">OpenCode :4001</div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-box ab-green">OpenCode :4002</div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-box ab-green">OpenCode :4003</div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-box ab-gray">…N agents</div>
+    </div>
+
+    <div class="arch-down">
+      <div class="arch-row" style="margin-bottom:.5rem;">
+        <div class="arch-box ab-cyan">monitor.py</div>
+        <div class="arch-arrow" style="margin:0 .5rem;">→</div>
+        <div class="arch-box ab-gray">/tmp/gmux-pane-state.json</div>
+      </div>
+    </div>
+
+    <div class="arch-down">
+      <div class="arch-row" style="margin-bottom:.5rem;">
+        <div class="arch-box ab-purple">Tauri (Rust)</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box ab-cyan">HTTP :8769</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box ab-orange">gmux UI v3.0</div>
+      </div>
+    </div>
+
+    <div class="arch-down">
+      <div class="arch-row">
+        <div class="arch-box ab-cyan">SSE /api/stream</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box ab-orange">Browser</div>
+        <div class="arch-arrow">+</div>
+        <div class="arch-box ab-orange">Phone PWA :5550</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- FOOTER -->
+<footer>
+  <div style="color:var(--muted); font-family:var(--font-mono); font-size:.78rem;">
+    gmux v3.0 · Built 2026-05-10 · gesture-aware AI terminal multiplexer
+  </div>
+  <div class="footer-links">
+    <a href="/v2/index.html">Live Demo</a>
+    <a href="https://github.com">GitHub</a>
+    <a href="https://gmux.ai">gmux.ai</a>
+  </div>
+</footer>
+
+</div><!-- .page -->
+
+<script>
+// Intersection Observer for fade-in reveals
+const revealEls = document.querySelectorAll('.reveal');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      observer.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.08 });
+revealEls.forEach(el => observer.observe(el));
+
+// Active nav link via IntersectionObserver
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('nav a.nav-link');
+const navObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = e.target.id;
+      navLinks.forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+      });
+    }
+  });
+}, { threshold: 0.4 });
+sections.forEach(s => navObserver.observe(s));
+</script>
+</body>
+</html>
