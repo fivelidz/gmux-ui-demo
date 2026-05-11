@@ -1,6 +1,6 @@
 <!--
   gmux v3.0 — UI_creation_independent/v2/index.html
-  Built: 2026-05-10
+  Built: 2026-05-11
   Single-file standalone build — no external imports needed
   Run via http(s):// — file:// will fail (MediaPipe WASM + ES modules)
 -->
@@ -475,6 +475,46 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
 #cp-inp::placeholder{color:var(--muted);}
 .cp-send{padding:8px 13px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;background:rgba(129,140,248,.18);border:1px solid rgba(129,140,248,.35);color:var(--accent);transition:all 120ms;flex-shrink:0;}
 .cp-send:hover{background:rgba(129,140,248,.28);}
+/* ── Agent avatar (mini crab) in chat panel ── */
+#cp-avatar{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:8px 0 4px;flex-shrink:0;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,transparent 100%);
+}
+#cp-avatar-crab{
+  width:52px;height:52px;display:flex;align-items:center;justify-content:center;
+  filter:drop-shadow(0 0 8px currentColor);
+  transition:filter 400ms;
+}
+#cp-avatar-badge{
+  font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:2px 7px;border-radius:10px;opacity:.9;
+  transition:all 300ms;
+}
+/* State animations on the crab SVG root element */
+#cp-avatar-crab.working  svg { animation: ava-bounce 0.7s ease-in-out infinite alternate; }
+#cp-avatar-crab.waiting  svg { animation: ava-breathe 2.5s ease-in-out infinite; }
+#cp-avatar-crab.permission svg { animation: ava-flash 0.5s ease-in-out infinite alternate; }
+#cp-avatar-crab.idle     svg { animation: ava-breathe 4s ease-in-out infinite; opacity:.6; }
+#cp-avatar-crab.done     svg { animation: ava-spin 1s ease-in-out 1; }
+@keyframes ava-bounce  { from{transform:translateY(0) scale(1)} to{transform:translateY(-6px) scale(1.05)} }
+@keyframes ava-breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+@keyframes ava-flash   { from{opacity:1} to{opacity:0.4} }
+@keyframes ava-spin    { 0%{transform:rotate(0deg)} 50%{transform:rotate(20deg)} 100%{transform:rotate(0deg)} }
+
+/* Fullscreen avatar — bottom right corner */
+#fs-avatar{
+  position:fixed;right:24px;bottom:24px;z-index:150;
+  display:none;flex-direction:column;align-items:center;gap:6px;
+  pointer-events:none;
+}
+#fs-avatar.visible{display:flex;}
+#fs-avatar-crab{width:80px;height:80px;filter:drop-shadow(0 0 16px currentColor);}
+#fs-avatar-label{
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:rgba(255,255,255,.7);text-shadow:0 1px 4px rgba(0,0,0,.8);
+}
 .cp-hist{
   width:28px;height:28px;border-radius:7px;flex-shrink:0;
   background:rgba(255,255,255,.05);border:1px solid var(--border);
@@ -1398,6 +1438,10 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
         <button class="cp-fs" id="cp-fs" onclick="toggleChatFullscreen()" title="Fullscreen (F)">⛶</button>
         <button class="cp-x" onclick="closeChat()">✕</button>
       </div>
+      <div id="cp-avatar">
+        <div id="cp-avatar-crab"></div>
+        <div id="cp-avatar-badge">—</div>
+      </div>
       <div id="cp-summary"></div>
       <!-- v2.3 voice strip -->
       <div id="voice-strip">
@@ -1413,6 +1457,12 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
         <button class="cp-ptt" id="cp-ptt" onmousedown="startPTT()" onmouseup="stopPTT()" ontouchstart="startPTT()" ontouchend="stopPTT()">🎙</button>
         <button class="cp-send" onclick="sendChat()">Send</button>
       </div>
+    </div>
+
+    <!-- Fullscreen agent avatar overlay -->
+    <div id="fs-avatar">
+      <div id="fs-avatar-crab"></div>
+      <div id="fs-avatar-label"></div>
     </div>
 
     <!-- Graph panel — v2.4: minimal header, just close + canvas -->
@@ -1691,32 +1741,117 @@ function startMockEvolution(panesObj, onUpdate) {
 
 /** Try to connect to real Tauri backend, fall back to mock */
 async function initDataSource(panesObj, onUpdate) {
+  // Apply real pane state — full replacement, not merge
+  // This wipes any leftover mock entries and replaces with real tmux panes
+  const applyRealState = (real) => {
+    if (!real || typeof real !== 'object') return;
+    const realIds = Object.keys(real);
+    if (realIds.length === 0) return;
+
+    // Remove panes that no longer exist in the real state
+    for (const id of Object.keys(panesObj)) {
+      if (!real[id]) delete panesObj[id];
+    }
+    // Add/update real panes — preserve any client-only fields (chat history, etc.)
+    for (const [id, pane] of Object.entries(real)) {
+      if (panesObj[id]) {
+        // Existing entry — update mutable fields, keep client metadata
+        Object.assign(panesObj[id], pane);
+      } else {
+        // New entry — copy real pane wholesale
+        panesObj[id] = { ...pane };
+      }
+    }
+    // Rebuild paneOrder to match real data (so new panes appear in window-index order)
+    paneOrder = Object.keys(panesObj).sort((a, b) =>
+      (panesObj[a].window_index || 0) - (panesObj[b].window_index || 0)
+    );
+    // Ensure selection is valid — if selected pane vanished, pick first
+    if (!panesObj[selectedId]) {
+      const first = paneOrder[0];
+      if (first) selectedId = first;
+    }
+  };
+
+  // 1. Try Tauri (desktop app)
   try {
-    // Check if we're inside Tauri
     if (window.__TAURI_INTERNALS__) {
       const { listen } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/event');
-      // Listen to real gmux-state events
+      // Listen for gmux-state events emitted by Rust poll thread (1Hz)
       await listen('gmux-state', (event) => {
         try {
-          const real = JSON.parse(event.payload);
-          // Merge real data fields onto our mock (preserves extended fields)
-          for (const [id, pane] of Object.entries(real)) {
-            if (panesObj[id]) {
-              Object.assign(panesObj[id], pane);
-            }
-          }
+          // Payload is a JSON string (double-encoded since Rust emits as &str)
+          const payload = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
+          let real = JSON.parse(payload);
+          // Rust sometimes wraps the string again — handle that
+          if (typeof real === 'string') real = JSON.parse(real);
+          applyRealState(real);
+          // Refresh session tabs if the set of sessions changed
+          if (_deriveSessions(panesObj)) renderSessionTabs();
           onUpdate({ ...panesObj });
-        } catch(e) { /* ignore parse errors */ }
+        } catch(e) { console.warn('[gmux] state parse:', e); }
       });
+      // Also do a one-shot initial fetch via invoke so we have data before first event
+      try {
+        const { invoke } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core');
+        const initial = await invoke('get_pane_state');
+        if (initial && initial !== '{}') {
+          const real = JSON.parse(initial);
+          applyRealState(real);
+          if (_deriveSessions(panesObj)) renderSessionTabs();
+          onUpdate({ ...panesObj });
+        }
+      } catch(e) { /* invoke may fail before backend ready */ }
       console.log('[gmux] Connected to Tauri backend — live data');
       return 'tauri';
     }
-  } catch(e) { /* not in Tauri */ }
+  } catch(e) { console.warn('[gmux] Tauri init failed:', e); }
 
-  // Browser mode — use mock evolution
-  console.log('[gmux] Browser mode — mock data');
+  // 2. Try HTTP backend (browser hitting monitor.py :8769)
+  try {
+    const apiBase = window.GMUX_API || 'http://127.0.0.1:8769';
+    const resp = await fetch(`${apiBase}/api/state`, { signal: AbortSignal.timeout(1500) });
+    if (resp.ok) {
+      const real = await resp.json();
+      applyRealState(real);
+      if (_deriveSessions(panesObj)) renderSessionTabs();
+      onUpdate({ ...panesObj });
+      // Subscribe to SSE for live updates
+      try {
+        const es = new EventSource(`${apiBase}/api/stream`);
+        es.onmessage = (ev) => {
+          try {
+            const next = JSON.parse(ev.data);
+            applyRealState(next);
+            if (_deriveSessions(panesObj)) renderSessionTabs();
+            onUpdate({ ...panesObj });
+          } catch(e) {}
+        };
+        es.onerror = () => { /* will retry automatically */ };
+        console.log(`[gmux] Connected via HTTP+SSE: ${apiBase}`);
+        return 'http';
+      } catch(e) {
+        // SSE failed — fall back to 2s polling
+        setInterval(async () => {
+          try {
+            const r = await fetch(`${apiBase}/api/state`);
+            if (!r.ok) return;
+            const next = await r.json();
+            applyRealState(next);
+            if (_deriveSessions(panesObj)) renderSessionTabs();
+            onUpdate({ ...panesObj });
+          } catch(_) {}
+        }, 2000);
+        console.log(`[gmux] Connected via HTTP polling: ${apiBase}`);
+        return 'http-poll';
+      }
+    }
+  } catch(e) { /* HTTP not available, fall through to mock */ }
+
+  // 3. Mock evolution fallback
+  console.log('[gmux] No backend — running in mock mode');
   startMockEvolution(panesObj, onUpdate);
-  return 'browser';
+  return 'mock';
 }
 
 
@@ -3733,23 +3868,77 @@ const CHAT = {
   ],
 };
 
-// Mock sessions (v2.4: actually filter by session_name + count badges)
-const SESSIONS = [
+// Sessions — starts with mock list, replaced with real list when live data arrives
+let SESSIONS = [
   {name:'gmux',     color:'#818cf8'},
   {name:'work',     color:'#34d399'},
   {name:'personal', color:'#f87171'},
 ];
-// v2.4 — sprinkle panes across multiple sessions so the filter has something to do
+// Mock demo: sprinkle panes across sessions for filtering demo before live data arrives
 (function reassignSessionsForDemo(){
-  // %1, %2, %3, %4 → gmux  (default)
-  // %5, %6 → work
-  // %7, %8 → personal
   const map = {'%5':'work','%6':'work','%7':'personal','%8':'personal'};
   for (const id in MOCK_PANES) {
     if (map[id]) MOCK_PANES[id].session_name = map[id];
   }
 })();
-let activeSession = 'all';   // v2.4 — default to "all" so the demo shows everything
+let activeSession = 'all';   // start in "all" so user can see every agent across sessions
+
+// Stable colour per session name (hash-based so it's consistent across reloads)
+const SESSION_PALETTE = [
+  '#818cf8', // indigo
+  '#34d399', // emerald
+  '#f87171', // red
+  '#fbbf24', // amber
+  '#67e8f9', // cyan
+  '#a78bfa', // violet
+  '#fb923c', // orange
+  '#4ade80', // green
+  '#f472b6', // pink
+  '#60a5fa', // blue
+];
+function _sessionColor(name) {
+  // Hash session name to a stable palette index
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return SESSION_PALETTE[Math.abs(h) % SESSION_PALETTE.length];
+}
+
+// Derive the live session list from the current panes object.
+// Accepts an optional explicit panes map (used during initDataSource where
+// the global `panes` may not have been rebound yet).
+// Returns true if SESSIONS changed (so caller can re-render tabs).
+function _deriveSessions(srcMap) {
+  const src = srcMap || panes;
+  const seen = new Map(); // name → count
+  for (const id in src) {
+    const sname = src[id]?.session_name;
+    if (!sname) continue;
+    seen.set(sname, (seen.get(sname) || 0) + 1);
+  }
+  if (seen.size === 0) return false;
+  // Sort: gmux/main first, then alphabetical
+  const sorted = [...seen.keys()].sort((a, b) => {
+    if (a === 'gmux' || a === 'main') return -1;
+    if (b === 'gmux' || b === 'main') return 1;
+    return a.localeCompare(b);
+  });
+  const newSessions = sorted.map(name => {
+    // Preserve any custom colour already assigned
+    const existing = SESSIONS.find(s => s.name === name);
+    return { name, color: existing?.color || _sessionColor(name) };
+  });
+  // Detect change
+  const changed = newSessions.length !== SESSIONS.length ||
+    newSessions.some((s, i) => SESSIONS[i]?.name !== s.name);
+  if (changed) {
+    SESSIONS = newSessions;
+    // If the user's active session no longer exists, fall back to 'all'
+    if (activeSession !== 'all' && !SESSIONS.some(s => s.name === activeSession)) {
+      activeSession = 'all';
+    }
+  }
+  return changed;
+}
 
 // Gesture command map
 const GMAP = [
@@ -3939,6 +4128,7 @@ function render() {
   renderSparklines(arr);
   if (chatOpen) updateChatHead();
   renderGestureMap();
+  if (chatOpen && panes[selectedId]) updateAvatar(panes[selectedId]);
 }
 
 // ── v2.3 perf strip in statusbar ──
@@ -4060,6 +4250,92 @@ function renderSidebar(arr) {
       <div class="arow-ram"><div class="arow-ram-f" style="width:${rp}%;background:${rc}"></div></div>
     </div>`;
   }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// AGENT AVATAR — mini crab from aquarium system
+// ═══════════════════════════════════════════════════════════
+const AVA_COLORS = {
+  working:'#4ade80', waiting:'#f87171', permission:'#fb923c',
+  done:'#a78bfa', error:'#ef4444', idle:'#94a3b8', not_started:'#64748b',
+};
+const AVA_LABELS = {
+  working:'WORKING', waiting:'WAITING', permission:'NEEDS YOU',
+  done:'DONE', error:'ERROR', idle:'IDLE', not_started:'STARTING',
+};
+
+function _blend(hex, target, t) {
+  const a = [parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];
+  const b = target==='#ffffff'?[255,255,255]:[0,0,0];
+  return '#'+a.map((v,i)=>Math.round(v+(b[i]-v)*t).toString(16).padStart(2,'0')).join('');
+}
+
+function makeCrabSVG(color, size=52) {
+  const hi = _blend(color,'#ffffff',.38), dk = _blend(color,'#000000',.38);
+  const id = color.replace('#','');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <line x1="14" y1="37" x2="4"  y2="51" stroke="${dk}" stroke-width="3.2" stroke-linecap="round"/>
+  <line x1="21" y1="41" x2="8"  y2="53" stroke="${dk}" stroke-width="3"   stroke-linecap="round"/>
+  <line x1="44" y1="37" x2="60" y2="51" stroke="${dk}" stroke-width="3.2" stroke-linecap="round"/>
+  <line x1="49" y1="41" x2="56" y2="53" stroke="${dk}" stroke-width="3"   stroke-linecap="round"/>
+  <line x1="16" y1="33" x2="5"  y2="43" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
+  <line x1="48" y1="33" x2="59" y2="43" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
+  <ellipse cx="8"  cy="24" rx="7" ry="5" fill="${dk}"/>
+  <ellipse cx="56" cy="24" rx="7" ry="5" fill="${dk}"/>
+  <line x1="14" y1="28" x2="8"  y2="25" stroke="${color}" stroke-width="3.8" stroke-linecap="round"/>
+  <line x1="50" y1="28" x2="56" y2="25" stroke="${color}" stroke-width="3.8" stroke-linecap="round"/>
+  <ellipse cx="32" cy="34" rx="20" ry="15" fill="${color}"/>
+  <ellipse cx="26" cy="27" rx="9"  ry="5"  fill="${hi}" opacity=".3"/>
+  <path d="M18 30 Q32 22 46 30" fill="none" stroke="${hi}" stroke-width="1" opacity=".35"/>
+  <line x1="26" y1="22" x2="23" y2="15" stroke="${dk}" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="38" y1="22" x2="41" y2="15" stroke="${dk}" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="22" cy="14" r="4"   fill="#080808"/>
+  <circle cx="42" cy="14" r="4"   fill="#080808"/>
+  <circle cx="21" cy="13" r="1.5" fill="#fff" opacity=".85"/>
+  <circle cx="41" cy="13" r="1.5" fill="#fff" opacity=".85"/>
+  <line x1="18" y1="43" x2="10" y2="56" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
+  <line x1="46" y1="43" x2="54" y2="56" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="sg${id}" cx="40%" cy="35%" r="60%">
+      <stop offset="0%"   stop-color="#fff" stop-opacity=".28"/>
+      <stop offset="100%" stop-color="#000" stop-opacity=".2"/>
+    </radialGradient>
+  </defs>
+</svg>`;
+}
+
+function updateAvatar(pane) {
+  if (!pane) return;
+  const state = pane.state || 'idle';
+  const color = AVA_COLORS[state] || '#94a3b8';
+  const label = AVA_LABELS[state] || state.toUpperCase();
+
+  // Chat panel mini avatar
+  const craEl  = document.getElementById('cp-avatar-crab');
+  const badgeEl = document.getElementById('cp-avatar-badge');
+  if (craEl) {
+    craEl.innerHTML = makeCrabSVG(color, 48);
+    craEl.className = state;
+    craEl.style.color = color;
+  }
+  if (badgeEl) {
+    badgeEl.textContent = label;
+    badgeEl.style.background = color+'22';
+    badgeEl.style.color = color;
+    badgeEl.style.border = `1px solid ${color}44`;
+  }
+
+  // Fullscreen avatar
+  const fsEl    = document.getElementById('fs-avatar');
+  const fsCrab  = document.getElementById('fs-avatar-crab');
+  const fsLabel = document.getElementById('fs-avatar-label');
+  if (fsEl) {
+    const isFs = document.getElementById('app')?.classList.contains('chat-fullscreen') || 
+                 (fullscreenId !== null);
+    fsEl.classList.toggle('visible', !!isFs);
+    if (fsCrab) { fsCrab.innerHTML = makeCrabSVG(color, 80); fsCrab.style.color = color; }
+    if (fsLabel) fsLabel.textContent = `${pane.window_name} · ${label}`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4403,24 +4679,80 @@ function sel(id) {
 }
 window.sel = sel;
 
-function approve(id) {
-  if (!panes[id]) return;
-  panes[id].state = 'working'; panes[id].current_tool = null;
+async function approve(id) {
+  const p = panes[id];
+  if (!p) return;
+  // Optimistic UI update
+  p.state = 'working'; p.current_tool = null;
   render(); toast('✓ Approved');
-  if (chatOpen && selectedId===id) renderChatPanel(panes[id]);
-  logAction(`Approved ${panes[id].window_name}`);
-  // v2.4 — green flash on the approved pane
+  if (chatOpen && selectedId===id) renderChatPanel(p);
+  logAction(`Approved ${p.window_name}`);
   const el = document.querySelector(`.pane[data-id="${id}"]`);
   if (el) {
     el.classList.add('approve-flash');
     setTimeout(() => el.classList.remove('approve-flash'), 900);
   }
+  // Wire to real backend if in Tauri
+  if (window.__TAURI_INTERNALS__) {
+    try {
+      const invoke = window.__TAURI__?.core?.invoke ||
+        (await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core').catch(()=>({invoke:null}))).invoke;
+      if (invoke) {
+        // Look up the current OpenCode session ID for this pane
+        const sessionId = await _getActiveSessionId(p.api_port, p.cwd || '').catch(()=>'');
+        await invoke('approve_agent', {
+          port:         p.api_port  || 0,
+          sessionId:    sessionId,
+          directory:    p.cwd       || '',
+          windowIndex:  p.window_index || 0,
+        });
+      }
+    } catch(e) { console.warn('[gmux] approve_agent failed:', e); }
+  }
 }
-function reject(id) {
-  if (!panes[id]) return;
-  panes[id].state='waiting'; render(); toast('✗ Rejected');
-  logAction(`Rejected ${panes[id]?.window_name}`);
+async function reject(id) {
+  const p = panes[id];
+  if (!p) return;
+  p.state='waiting'; render(); toast('✗ Rejected');
+  logAction(`Rejected ${p?.window_name}`);
+  if (window.__TAURI_INTERNALS__) {
+    try {
+      const invoke = window.__TAURI__?.core?.invoke ||
+        (await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core').catch(()=>({invoke:null}))).invoke;
+      if (invoke) {
+        const sessionId = await _getActiveSessionId(p.api_port, p.cwd || '').catch(()=>'');
+        await invoke('reject_agent', {
+          port:         p.api_port  || 0,
+          sessionId:    sessionId,
+          directory:    p.cwd       || '',
+          windowIndex:  p.window_index || 0,
+        });
+      }
+    } catch(e) { console.warn('[gmux] reject_agent failed:', e); }
+  }
 }
+
+// Fetch the active/most-recent OpenCode session ID for a given pane
+// Used to target approve/reject and sendChat at the right session
+const _sessionIdCache = {};
+async function _getActiveSessionId(port, directory) {
+  if (!port) return '';
+  const cacheKey = `${port}:${directory}`;
+  // Cache for 30s to avoid hammering the API
+  const cached = _sessionIdCache[cacheKey];
+  if (cached && Date.now() - cached.ts < 30000) return cached.id;
+  try {
+    const enc = encodeURIComponent(directory);
+    const resp = await fetch(`http://127.0.0.1:${port}/session?directory=${enc}`, {signal: AbortSignal.timeout(2000)});
+    if (!resp.ok) return '';
+    const sessions = await resp.json();
+    // Sessions are returned newest-first; pick the first one
+    const id = sessions?.[0]?.id || '';
+    _sessionIdCache[cacheKey] = { id, ts: Date.now() };
+    return id;
+  } catch(e) { return ''; }
+}
+
 window.approve = approve;
 window.reject  = reject;
 
@@ -4435,6 +4767,7 @@ function jumpToWaiting() {
 // CHAT PANEL
 // ═══════════════════════════════════════════════════════════
 function openChat(id) {
+  updateAvatar(panes[id]);
   selectedId = id; chatOpen = true;
   $('chat-panel').classList.add('open');
   renderChatPanel(panes[id]);
@@ -4502,6 +4835,7 @@ function renderChatPanel(p) {
   // Reset history navigation when switching agents + update button state
   _promptHistIdx = -1;
   _updateHistBtn(p.pane_id);
+  updateAvatar(p);
 }
 
 window.renderChatPanelById = function(id) { renderChatPanel(panes[id]); };
@@ -4590,18 +4924,78 @@ window.recallLastPrompt = function() {
   requestAnimationFrame(() => { inp.selectionStart = inp.selectionEnd = inp.value.length; });
 };
 
-window.sendChat = function() {
+window.sendChat = async function() {
   const inp = $('cp-inp');
   const txt = inp.value.trim();
   if (!txt) return;
-  _pushPromptHistory(selectedId, txt);   // ← save to per-agent history
-  _promptHistIdx = -1;                   // reset navigation
+  _pushPromptHistory(selectedId, txt);
+  _promptHistIdx = -1;
   inp.value=''; window.autoResize(inp);
+  const pane = panes[selectedId];
   const hist = CHAT[selectedId] = CHAT[selectedId] || [];
-  hist.push({role:'user',text:txt});
-  renderChatPanel(panes[selectedId]);
+  hist.push({role:'user', text:txt});
+  renderChatPanel(pane);
+
+  // ── Real backend: OpenCode HTTP API ──────────────────────────────────
+  // Works in both Tauri (via invoke) and browser (direct fetch to localhost)
+  const port = pane?.api_port;
+  const cwd  = pane?.cwd || '';
+
+  if (port && port > 0) {
+    try {
+      // Get the active session ID for this pane
+      const sessionId = await _getActiveSessionId(port, cwd);
+      if (!sessionId) throw new Error('no session ID');
+
+      hist.push({role:'agent', text:'…', streaming:true});
+      renderChatPanel(pane);
+
+      let sent = false;
+      // In Tauri: use invoke (avoids CORS completely)
+      if (window.__TAURI_INTERNALS__) {
+        const invoke = window.__TAURI__?.core?.invoke ||
+          (await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core').catch(()=>({invoke:null}))).invoke;
+        if (invoke) {
+          const result = await invoke('send_to_agent', {
+            port, sessionId, directory: cwd, message: txt,
+          }).catch(e => { console.warn('[gmux] invoke send_to_agent:', e); return null; });
+          if (result) sent = true;
+        }
+      }
+      // In browser: direct fetch (works on localhost, CORS headers set by OpenCode)
+      if (!sent) {
+        const enc = encodeURIComponent(cwd);
+        const url = `http://127.0.0.1:${port}/session/${sessionId}/prompt_async?directory=${enc}`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({parts:[{type:'text',text:txt}]}),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (resp.ok || resp.status === 204) sent = true;
+      }
+      if (sent) {
+        // Message sent — real response comes via SSE gmux-state update
+        const last = hist[hist.length-1];
+        if (last?.streaming) {
+          last.streaming = false;
+          last.text = '✓ Sent — agent is processing…';
+        }
+        renderChatPanel(pane);
+        // Invalidate session cache so next send re-fetches (session may have advanced)
+        delete _sessionIdCache[`${port}:${cwd}`];
+        return;
+      }
+    } catch(e) {
+      console.warn('[gmux] sendChat real backend failed, using mock:', e);
+      // Remove the streaming placeholder if we added one
+      if (hist[hist.length-1]?.streaming) hist.pop();
+    }
+  }
+
+  // ── Mock fallback (no OpenCode port known) ────────────────────────────
   setTimeout(()=>{
-    hist.push({role:'agent',text:'Processing your request…',streaming:true});
+    hist.push({role:'agent', text:'Processing your request…', streaming:true});
     if (chatOpen) renderChatPanel(panes[selectedId]);
     setTimeout(()=>{
       const last = hist[hist.length-1];
@@ -5058,7 +5452,16 @@ async function initEngine() {
   const fs = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
   hldr = await HandLandmarker.createFromOptions(fs,{
     baseOptions:{
-      modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      // Prefer local cached model — avoids CDN dependency, loads ~2x faster
+      // Falls back to CDN if local path returns 404 (non-Tauri browser on remote host)
+      modelAssetPath: (() => {
+        const local = '/hand_landmarker.task';
+        // In Tauri the file is served from src/ root; in browser check if it exists
+        // We'll try local first — if it 404s MediaPipe will throw and we restart with CDN
+        return local;
+      })(),
+      // CDN fallback stored here for error recovery in initGesture()
+      // modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
       delegate:'GPU'
     },
     runningMode:'VIDEO',numHands:2,
@@ -6166,7 +6569,7 @@ window.toggleTabsBottom = function() { _origToggleTabsBottom(); _saveState(); };
 // v2.4 — must be declared BEFORE initDataSource callback (closure capture)
 const _lastTool = {};
 
-// Connect to data source (Tauri or mock evolution)
+// Connect to data source (Tauri / HTTP / mock)
 const src = await initDataSource(panes, updated => {
   panes = updated;
   // Feed tool-event buffers from data updates (NOT token rates — those are
@@ -6181,8 +6584,22 @@ const src = await initDataSource(panes, updated => {
   render();
   if (chatOpen) updateChatHead();
 });
-$('sb-src').textContent = src==='tauri' ? '● tauri live' : '● mock';
-$('sb-src').style.color  = src==='tauri' ? 'var(--accent)' : 'var(--muted)';
+
+// After initial connect, force a re-render so real sessions + agents show up immediately
+_deriveSessions();
+renderSessionTabs();
+render();
+if (chatOpen) updateChatHead();
+const _srcLabel = {
+  tauri:    '● tauri live',
+  http:     '● live :8769',
+  'http-poll': '● live (poll)',
+  mock:     '● mock',
+  browser:  '● mock',
+}[src] || '● ' + src;
+$('sb-src').textContent = _srcLabel;
+$('sb-src').style.color = (src === 'tauri' || src === 'http' || src === 'http-poll') ? 'var(--accent)' : 'var(--muted)';
+$('sb-src').title = `Data source: ${src} · ${Object.keys(panes).length} agents · ${SESSIONS.length} sessions`;
 
 // v2.4 — single perf timer: bumps mock tokens for working agents AND records the
 // rolling rate for sparklines. Runs at 1 Hz. Uses light DOM updates only — does
