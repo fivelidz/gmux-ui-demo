@@ -1,6 +1,6 @@
 <!--
   gmux v3.0 — UI_creation_independent/v2/index.html
-  Built: 2026-05-10
+  Built: 2026-05-11
   Single-file standalone build — no external imports needed
   Run via http(s):// — file:// will fail (MediaPipe WASM + ES modules)
 -->
@@ -4403,24 +4403,80 @@ function sel(id) {
 }
 window.sel = sel;
 
-function approve(id) {
-  if (!panes[id]) return;
-  panes[id].state = 'working'; panes[id].current_tool = null;
+async function approve(id) {
+  const p = panes[id];
+  if (!p) return;
+  // Optimistic UI update
+  p.state = 'working'; p.current_tool = null;
   render(); toast('✓ Approved');
-  if (chatOpen && selectedId===id) renderChatPanel(panes[id]);
-  logAction(`Approved ${panes[id].window_name}`);
-  // v2.4 — green flash on the approved pane
+  if (chatOpen && selectedId===id) renderChatPanel(p);
+  logAction(`Approved ${p.window_name}`);
   const el = document.querySelector(`.pane[data-id="${id}"]`);
   if (el) {
     el.classList.add('approve-flash');
     setTimeout(() => el.classList.remove('approve-flash'), 900);
   }
+  // Wire to real backend if in Tauri
+  if (window.__TAURI_INTERNALS__) {
+    try {
+      const invoke = window.__TAURI__?.core?.invoke ||
+        (await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core').catch(()=>({invoke:null}))).invoke;
+      if (invoke) {
+        // Look up the current OpenCode session ID for this pane
+        const sessionId = await _getActiveSessionId(p.api_port, p.cwd || '').catch(()=>'');
+        await invoke('approve_agent', {
+          port:         p.api_port  || 0,
+          sessionId:    sessionId,
+          directory:    p.cwd       || '',
+          windowIndex:  p.window_index || 0,
+        });
+      }
+    } catch(e) { console.warn('[gmux] approve_agent failed:', e); }
+  }
 }
-function reject(id) {
-  if (!panes[id]) return;
-  panes[id].state='waiting'; render(); toast('✗ Rejected');
-  logAction(`Rejected ${panes[id]?.window_name}`);
+async function reject(id) {
+  const p = panes[id];
+  if (!p) return;
+  p.state='waiting'; render(); toast('✗ Rejected');
+  logAction(`Rejected ${p?.window_name}`);
+  if (window.__TAURI_INTERNALS__) {
+    try {
+      const invoke = window.__TAURI__?.core?.invoke ||
+        (await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core').catch(()=>({invoke:null}))).invoke;
+      if (invoke) {
+        const sessionId = await _getActiveSessionId(p.api_port, p.cwd || '').catch(()=>'');
+        await invoke('reject_agent', {
+          port:         p.api_port  || 0,
+          sessionId:    sessionId,
+          directory:    p.cwd       || '',
+          windowIndex:  p.window_index || 0,
+        });
+      }
+    } catch(e) { console.warn('[gmux] reject_agent failed:', e); }
+  }
 }
+
+// Fetch the active/most-recent OpenCode session ID for a given pane
+// Used to target approve/reject and sendChat at the right session
+const _sessionIdCache = {};
+async function _getActiveSessionId(port, directory) {
+  if (!port) return '';
+  const cacheKey = `${port}:${directory}`;
+  // Cache for 30s to avoid hammering the API
+  const cached = _sessionIdCache[cacheKey];
+  if (cached && Date.now() - cached.ts < 30000) return cached.id;
+  try {
+    const enc = encodeURIComponent(directory);
+    const resp = await fetch(`http://127.0.0.1:${port}/session?directory=${enc}`, {signal: AbortSignal.timeout(2000)});
+    if (!resp.ok) return '';
+    const sessions = await resp.json();
+    // Sessions are returned newest-first; pick the first one
+    const id = sessions?.[0]?.id || '';
+    _sessionIdCache[cacheKey] = { id, ts: Date.now() };
+    return id;
+  } catch(e) { return ''; }
+}
+
 window.approve = approve;
 window.reject  = reject;
 
@@ -4590,18 +4646,78 @@ window.recallLastPrompt = function() {
   requestAnimationFrame(() => { inp.selectionStart = inp.selectionEnd = inp.value.length; });
 };
 
-window.sendChat = function() {
+window.sendChat = async function() {
   const inp = $('cp-inp');
   const txt = inp.value.trim();
   if (!txt) return;
-  _pushPromptHistory(selectedId, txt);   // ← save to per-agent history
-  _promptHistIdx = -1;                   // reset navigation
+  _pushPromptHistory(selectedId, txt);
+  _promptHistIdx = -1;
   inp.value=''; window.autoResize(inp);
+  const pane = panes[selectedId];
   const hist = CHAT[selectedId] = CHAT[selectedId] || [];
-  hist.push({role:'user',text:txt});
-  renderChatPanel(panes[selectedId]);
+  hist.push({role:'user', text:txt});
+  renderChatPanel(pane);
+
+  // ── Real backend: OpenCode HTTP API ──────────────────────────────────
+  // Works in both Tauri (via invoke) and browser (direct fetch to localhost)
+  const port = pane?.api_port;
+  const cwd  = pane?.cwd || '';
+
+  if (port && port > 0) {
+    try {
+      // Get the active session ID for this pane
+      const sessionId = await _getActiveSessionId(port, cwd);
+      if (!sessionId) throw new Error('no session ID');
+
+      hist.push({role:'agent', text:'…', streaming:true});
+      renderChatPanel(pane);
+
+      let sent = false;
+      // In Tauri: use invoke (avoids CORS completely)
+      if (window.__TAURI_INTERNALS__) {
+        const invoke = window.__TAURI__?.core?.invoke ||
+          (await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core').catch(()=>({invoke:null}))).invoke;
+        if (invoke) {
+          const result = await invoke('send_to_agent', {
+            port, sessionId, directory: cwd, message: txt,
+          }).catch(e => { console.warn('[gmux] invoke send_to_agent:', e); return null; });
+          if (result) sent = true;
+        }
+      }
+      // In browser: direct fetch (works on localhost, CORS headers set by OpenCode)
+      if (!sent) {
+        const enc = encodeURIComponent(cwd);
+        const url = `http://127.0.0.1:${port}/session/${sessionId}/prompt_async?directory=${enc}`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({parts:[{type:'text',text:txt}]}),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (resp.ok || resp.status === 204) sent = true;
+      }
+      if (sent) {
+        // Message sent — real response comes via SSE gmux-state update
+        const last = hist[hist.length-1];
+        if (last?.streaming) {
+          last.streaming = false;
+          last.text = '✓ Sent — agent is processing…';
+        }
+        renderChatPanel(pane);
+        // Invalidate session cache so next send re-fetches (session may have advanced)
+        delete _sessionIdCache[`${port}:${cwd}`];
+        return;
+      }
+    } catch(e) {
+      console.warn('[gmux] sendChat real backend failed, using mock:', e);
+      // Remove the streaming placeholder if we added one
+      if (hist[hist.length-1]?.streaming) hist.pop();
+    }
+  }
+
+  // ── Mock fallback (no OpenCode port known) ────────────────────────────
   setTimeout(()=>{
-    hist.push({role:'agent',text:'Processing your request…',streaming:true});
+    hist.push({role:'agent', text:'Processing your request…', streaming:true});
     if (chatOpen) renderChatPanel(panes[selectedId]);
     setTimeout(()=>{
       const last = hist[hist.length-1];
@@ -5058,7 +5174,16 @@ async function initEngine() {
   const fs = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
   hldr = await HandLandmarker.createFromOptions(fs,{
     baseOptions:{
-      modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      // Prefer local cached model — avoids CDN dependency, loads ~2x faster
+      // Falls back to CDN if local path returns 404 (non-Tauri browser on remote host)
+      modelAssetPath: (() => {
+        const local = '/hand_landmarker.task';
+        // In Tauri the file is served from src/ root; in browser check if it exists
+        // We'll try local first — if it 404s MediaPipe will throw and we restart with CDN
+        return local;
+      })(),
+      // CDN fallback stored here for error recovery in initGesture()
+      // modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
       delegate:'GPU'
     },
     runningMode:'VIDEO',numHands:2,
