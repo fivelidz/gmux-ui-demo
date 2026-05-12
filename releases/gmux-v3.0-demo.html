@@ -1667,7 +1667,7 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
         <span id="cp-name">—</span>
         <span id="cp-status"></span>
         <button class="cp-fs" id="cp-fs" onclick="toggleChatFullscreen()" title="Fullscreen (F)">⛶</button>
-        <button class="cp-x" onclick="closeChat()">✕</button>
+        <button class="cp-x" id="cp-x" onclick="chatCloseOrExitFullscreen()" title="Close chat (Esc)">✕</button>
       </div>
       <div id="cp-summary"></div>
       <!-- v2.3 voice strip -->
@@ -1726,6 +1726,33 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
 </div>
 
 <script type="module">
+// ═══════════════════════════════════════════════════════════
+// v3.3 — Remote backend support
+// ═══════════════════════════════════════════════════════════
+// The UI defaults to http://127.0.0.1:8769 for the monitor. To point it at
+// a remote backend (e.g. a VM at 192.168.122.100), set the API URL via:
+//   1. ?api=http://host:port   in the page URL (one-off)
+//   2. window.GMUX_API = '…'   in DevTools console (overrides URL)
+//   3. localStorage 'gmux.api' (persists across reloads)
+// The first resolved value wins. URL param also gets saved to localStorage
+// so the user only has to type it once.
+(function _resolveApiBase() {
+  try {
+    const urlApi = new URLSearchParams(location.search).get('api');
+    if (urlApi) {
+      window.GMUX_API = urlApi.replace(/\/$/, '');
+      localStorage.setItem('gmux.api', window.GMUX_API);
+      console.log('[gmux] API base set via URL:', window.GMUX_API);
+      return;
+    }
+    const stored = localStorage.getItem('gmux.api');
+    if (stored) {
+      window.GMUX_API = stored;
+      console.log('[gmux] API base from localStorage:', window.GMUX_API);
+    }
+  } catch(_) {}
+})();
+
 // ─── INLINED: shared/mock-data.js ───
 /**
  * shared/mock-data.js
@@ -5108,6 +5135,17 @@ window.closeChat = function() {
   render();
 };
 
+// v3.3 — close button dual-role: in fullscreen it just exits fullscreen
+// (users almost always want to leave fullscreen, not kill the whole panel).
+// In windowed mode the ✕ still closes the chat panel entirely.
+window.chatCloseOrExitFullscreen = function() {
+  if (chatFullscreen) {
+    window.toggleChatFullscreen();   // exit fullscreen, keep chat open
+  } else {
+    window.closeChat();              // normal close
+  }
+};
+
 // v3.2 — chat panel fullscreen toggle (keeps sidebar + session tabs visible)
 let chatFullscreen = false;
 window.toggleChatFullscreen = function() {
@@ -5129,6 +5167,9 @@ window.toggleChatFullscreen = function() {
   }
   const btn = $('cp-fs');
   if (btn) btn.textContent = chatFullscreen ? '⊟' : '⛶';
+  // v3.3: retitle the ✕ button so users know it only exits fullscreen while fullscreen.
+  const xbtn = $('cp-x');
+  if (xbtn) xbtn.title = chatFullscreen ? 'Exit fullscreen (Esc)' : 'Close chat (Esc)';
   toast(chatFullscreen ? 'Chat fullscreen — Esc to exit · switch agents from sidebar' : 'Chat windowed');
 };
 
@@ -7194,14 +7235,17 @@ async function _checkBackendHealth() {
     } catch(e) { res = null; }
   }
   if (!res) {
-    // Browser path: ping :8769 directly
+    // Browser path: ping the configured API host directly (defaults to localhost)
+    const apiBase = window.GMUX_API || 'http://127.0.0.1:8769';
     try {
-      const r = await fetch('http://127.0.0.1:8769/health', { signal: AbortSignal.timeout(1200) });
+      const r = await fetch(`${apiBase}/health`, { signal: AbortSignal.timeout(1200) });
       res = { monitor: r.ok, voice: false, state_fresh: r.ok };
     } catch { res = { monitor: false, voice: false, state_fresh: false }; }
-    // Also check voice port via WebSocket (browser can't ping arbitrary ports easily)
+    // Voice WS uses same host as API base (replace http→ws, drop port if explicit)
     try {
-      const ws = new WebSocket('ws://127.0.0.1:8770');
+      // Derive ws://host:8770 from apiBase host
+      const wsHost = apiBase.replace(/^https?:\/\//,'').split(':')[0];
+      const ws = new WebSocket(`ws://${wsHost}:8770`);
       await new Promise((resolve, reject) => {
         ws.onopen = () => { res.voice = true; ws.close(); resolve(); };
         ws.onerror = () => { res.voice = false; resolve(); };
