@@ -1,17 +1,49 @@
 <!--
-  gmux v3.0 — UI_creation_independent/v2/index.html
-  Built: 2026-05-11
+  gmux v3.1 LIVE — UI_creation_independent/v2/index.html
+  Built: 2026-05-12
   Single-file standalone build — no external imports needed
   Run via http(s):// — file:// will fail (MediaPipe WASM + ES modules)
+
+  ─────────────────────────────────────────────────────────────
+  v3.1 LIVE — what changed vs v3.0 demo
+  ─────────────────────────────────────────────────────────────
+  All MOCK_* constants for runtime data have been replaced with live
+  fetches from the backend (gmux-system/backend/status/monitor.py on
+  port 8769). The mock fallbacks remain ONLY as the loading-state seed
+  for `panes` so the UI has something to render before the first
+  /api/state response arrives.
+
+  Removed mocks:
+    - MOCK_TODOS    → now TODOS (populated from p.todos / /api/pane/:pid/todos)
+    - MOCK_CHILDREN → now CHILDREN (from p.children, written by psutil)
+    - MOCK_PHRASES  → deleted; real Web Speech API drives transcripts
+    - CHAT (hardcoded) → now CHAT cache populated by fetchChat()
+    - REAL_CHAT     → folded into CHAT (single source of truth)
+    - reassignSessionsForDemo IIFE → deleted; SESSIONS derived from real data
+
+  New backend dependencies:
+    - GET  /api/state                 — full pane state with all live fields
+    - GET  /api/stream                — SSE feed of state changes
+    - GET  /api/pane/<pid>/todos      — full todo list for a pane's session
+    - GET  /api/pane/<pid>/messages   — chat history for a pane's session
+
+  See HANDOVER.md (next to this file) for full architecture notes.
+  Demo build is preserved at archive/demos/index.v3.0-demo-fullmock.*.html
 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>gmux v3.0</title>
+<title>gmux v3.1 LIVE</title>
 <style>
-/* gmux v3.0 — New in v3.0:
+/* gmux v3.1 LIVE — data refactor (see HANDOVER.md):
+   - All MOCK_TODOS / MOCK_CHILDREN / MOCK_PHRASES / hardcoded CHAT removed
+   - Live data fetched from backend on port 8769 (monitor.py)
+   - Real RAM/CPU/uptime via psutil, real model/tokens via OpenCode message
+     aggregation, real chat history via /api/pane/<pid>/messages
+   ─────────────────────────────────────────────────────────────────────
+   v3.0 carry-over — New in v3.0:
    GESTURE:
    - Pinch-drag scroll (expose-style): right-hand pinch+drag scrolls content, INVERTED from point direction (drag down = scroll up)
    - Pinch-release-to-select: if pinch drag < 15px total movement, release fires a click at that position
@@ -64,6 +96,25 @@
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+/* ── Scrollbars — visible, themed, and consistent across browsers ────── */
+/* Firefox / standards-compliant */
+*{scrollbar-width:thin;scrollbar-color:rgba(129,140,248,.45) rgba(255,255,255,.03);}
+/* WebKit / Chromium / WebKitGTK (Tauri on Linux) */
+*::-webkit-scrollbar{width:10px;height:10px;background:transparent;}
+*::-webkit-scrollbar-track{background:rgba(255,255,255,.02);border-radius:6px;}
+*::-webkit-scrollbar-thumb{
+  background:rgba(129,140,248,.45);
+  border-radius:6px;
+  border:2px solid transparent;
+  background-clip:content-box;
+  min-height:30px;
+}
+*::-webkit-scrollbar-thumb:hover{background-color:rgba(129,140,248,.75);background-clip:content-box;}
+*::-webkit-scrollbar-corner{background:transparent;}
+/* Re-hide where we explicitly didn't want one */
+#win-tabs::-webkit-scrollbar,
+#session-tabs::-webkit-scrollbar{display:none;}
 html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
   font-family:var(--font);font-size:14px;line-height:1.5;
   overflow:hidden;-webkit-font-smoothing:antialiased;}
@@ -442,11 +493,67 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
 /* v2.4 chat fullscreen toggle */
 .cp-fs{width:28px;height:28px;border-radius:6px;background:none;border:1px solid var(--border);color:var(--muted);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 100ms;}
 .cp-fs:hover{color:var(--text);background:var(--surface2);}
+/* Chat fullscreen — covers the grid+graph area only, leaves topbar &
+   sidebar visible so user can switch sessions/agents while staying in
+   the conversation view. */
 #chat-panel.fullscreen{
-  position:fixed; inset:0; z-index:200;
-  width:100vw !important; height:100vh !important;
-  border-left:none; transition:none;
+  position:fixed !important;
+  left:var(--cp-fs-left, 240px);   /* sidebar width — set by JS on toggle */
+  top:var(--cp-fs-top, 96px);      /* topbar + session tabs height */
+  right:0;
+  bottom:32px;                       /* statusbar */
+  z-index:120;
+  width:auto !important;
+  height:auto !important;
+  border-left:1px solid var(--border);
+  display:grid;
+  grid-template-columns: 1fr;        /* default: just the chat */
+  grid-template-rows: auto 1fr auto; /* head, body, input */
+  transition:none;
 }
+
+/* Widescreen: show todos as a side panel on the right (320px) */
+@media (min-width: 1400px) {
+  #chat-panel.fullscreen.has-todos {
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto 1fr auto;
+  }
+  #chat-panel.fullscreen .cp-fs-todos {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    border-left:1px solid var(--border);
+    background:rgba(0,0,0,.18);
+    overflow-y:auto;
+    padding:12px 14px;
+  }
+}
+/* Hide the todos panel by default; JS injects content when fullscreen+widescreen */
+#chat-panel:not(.fullscreen) .cp-fs-todos { display:none; }
+@media (max-width: 1399px) {
+  #chat-panel.fullscreen .cp-fs-todos { display:none; }
+}
+
+/* Fullscreen todos rendering */
+.cp-fs-todos-title{
+  font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-dim);margin-bottom:8px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.cp-fs-todos-list{display:flex;flex-direction:column;gap:5px;}
+.cp-fs-todo-row{
+  display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;
+  background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);font-size:12px;line-height:1.45;
+}
+.cp-fs-todo-row.done .cp-fs-todo-text{text-decoration:line-through;color:var(--text-dim);}
+.cp-fs-todo-row.active{background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.25);}
+.cp-fs-todo-check{
+  width:16px;height:16px;border-radius:4px;flex-shrink:0;margin-top:1px;
+  border:1.5px solid var(--border-hi,var(--border));
+  display:flex;align-items:center;justify-content:center;font-size:10px;
+}
+.cp-fs-todo-row.done .cp-fs-todo-check{background:var(--working);border-color:var(--working);color:white;}
+.cp-fs-todo-row.active .cp-fs-todo-check{border-color:var(--working);color:var(--working);}
+.cp-fs-todo-text{flex:1;word-break:break-word;}
 #cp-head{cursor:grab;} #cp-head:active{cursor:grabbing;}
 #cp-summary{padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.1);}
 .cp-sr{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap;}
@@ -468,6 +575,53 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
 .msg.user .msg-body{background:rgba(129,140,248,.10);border-color:rgba(129,140,248,.2);}
 .msg.tool .msg-body{font-family:var(--mono);font-size:12px;background:rgba(0,0,0,.2);color:var(--text-dim);border-color:rgba(251,146,60,.2);}
 .msg.streaming .msg-body::after{content:'▌';color:var(--accent);animation:cur .7s step-end infinite;}
+
+/* Flash-highlight a message (used by "scroll to last prompt" button) */
+.msg.flash-highlight .msg-body{
+  animation:msgFlash 1.4s ease-out;
+}
+@keyframes msgFlash{
+  0%   { box-shadow:0 0 0 3px rgba(129,140,248,.5), 0 0 12px 4px rgba(129,140,248,.4); background:rgba(129,140,248,.18); }
+  100% { box-shadow:0 0 0 0 transparent; }
+}
+
+/* ── Markdown rendering inside .msg-body ─────────────────────────────── */
+.msg-body .md-p{margin:0 0 8px 0;}
+.msg-body .md-p:last-child{margin-bottom:0;}
+.msg-body .md-h{margin:6px 0 4px 0;font-weight:700;color:var(--text-bright,var(--text));font-size:14px;line-height:1.3;}
+.msg-body h2.md-h{font-size:16px;}
+.msg-body h3.md-h{font-size:14.5px;}
+.msg-body h4.md-h{font-size:13.5px;}
+.msg-body .md-hr{border:none;border-top:1px solid var(--border);margin:8px 0;}
+.msg-body .md-bq{margin:4px 0;padding:4px 10px;border-left:3px solid var(--accent);background:rgba(129,140,248,.06);border-radius:0 6px 6px 0;color:var(--text-dim);}
+.msg-body .md-ul{margin:4px 0 8px 18px;padding:0;list-style:disc outside;}
+.msg-body .md-ul .md-li{margin:2px 0;}
+.msg-body code.md-inline{
+  font-family:var(--mono);font-size:0.92em;
+  background:rgba(255,255,255,.07);
+  color:#fbbf24;
+  padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.06);
+}
+.msg-body pre.md-code{
+  font-family:var(--mono);font-size:12px;line-height:1.5;
+  background:#0c0f1a;color:#e2e8f5;
+  padding:10px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.07);
+  margin:6px 0;overflow-x:auto;
+  position:relative;
+}
+.msg-body pre.md-code[data-lang]::before{
+  content:attr(data-lang);
+  position:absolute;top:6px;right:10px;
+  font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);opacity:.7;
+}
+.msg-body pre.md-code code{
+  background:none;border:none;padding:0;color:inherit;font-size:inherit;
+}
+.msg-body a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;}
+.msg-body a:hover{filter:brightness(1.2);}
+.msg-body strong{color:var(--text-bright,var(--text));font-weight:700;}
+.msg-body em{font-style:italic;color:var(--text);}
 @keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
 #cp-inp-wrap{padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:8px;align-items:flex-end;}
 #cp-inp{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;resize:none;min-height:38px;max-height:120px;transition:border-color 140ms;line-height:1.5;}
@@ -476,45 +630,8 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
 .cp-send{padding:8px 13px;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;background:rgba(129,140,248,.18);border:1px solid rgba(129,140,248,.35);color:var(--accent);transition:all 120ms;flex-shrink:0;}
 .cp-send:hover{background:rgba(129,140,248,.28);}
 /* ── Agent avatar (mini crab) in chat panel ── */
-#cp-avatar{
-  display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:8px 0 4px;flex-shrink:0;
-  border-bottom:1px solid var(--border);
-  background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,transparent 100%);
-}
-#cp-avatar-crab{
-  width:52px;height:52px;display:flex;align-items:center;justify-content:center;
-  filter:drop-shadow(0 0 8px currentColor);
-  transition:filter 400ms;
-}
-#cp-avatar-badge{
-  font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-  padding:2px 7px;border-radius:10px;opacity:.9;
-  transition:all 300ms;
-}
-/* State animations on the crab SVG root element */
-#cp-avatar-crab.working  svg { animation: ava-bounce 0.7s ease-in-out infinite alternate; }
-#cp-avatar-crab.waiting  svg { animation: ava-breathe 2.5s ease-in-out infinite; }
-#cp-avatar-crab.permission svg { animation: ava-flash 0.5s ease-in-out infinite alternate; }
-#cp-avatar-crab.idle     svg { animation: ava-breathe 4s ease-in-out infinite; opacity:.6; }
-#cp-avatar-crab.done     svg { animation: ava-spin 1s ease-in-out 1; }
-@keyframes ava-bounce  { from{transform:translateY(0) scale(1)} to{transform:translateY(-6px) scale(1.05)} }
-@keyframes ava-breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
-@keyframes ava-flash   { from{opacity:1} to{opacity:0.4} }
-@keyframes ava-spin    { 0%{transform:rotate(0deg)} 50%{transform:rotate(20deg)} 100%{transform:rotate(0deg)} }
-
-/* Fullscreen avatar — bottom right corner */
-#fs-avatar{
-  position:fixed;right:24px;bottom:24px;z-index:150;
-  display:none;flex-direction:column;align-items:center;gap:6px;
-  pointer-events:none;
-}
-#fs-avatar.visible{display:flex;}
-#fs-avatar-crab{width:80px;height:80px;filter:drop-shadow(0 0 16px currentColor);}
-#fs-avatar-label{
-  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-  color:rgba(255,255,255,.7);text-shadow:0 1px 4px rgba(0,0,0,.8);
-}
+/* Avatar system removed in v3.2 — was too distracting. State info shown
+   in cp-status chip and pane state dot instead. */
 .cp-hist{
   width:28px;height:28px;border-radius:7px;flex-shrink:0;
   background:rgba(255,255,255,.05);border:1px solid var(--border);
@@ -1125,9 +1242,16 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
 <div id="toast"></div>
 
 <!-- Demo banner (hidden by default; ?demo flag or long-press bdot reveals) -->
+<!-- v3.1 LIVE: banner is now hidden by default (was shown by default in the
+     v3.0 demo build).  Trigger it manually via:
+       - ?demo or ?share URL flag
+       - triple-click on the brand "gmux" text
+       - long-press on the brand dot
+     Banner copy now reflects that real data is being shown when the backend
+     is reachable; the data-source indicator in the status bar shows mode. -->
 <div id="demo-banner">
-  <span>✨ This is a live demo — all data is mocked. </span>
-  <a href="https://gmux.ai" target="_blank" rel="noopener">Get gmux at gmux.ai →</a>
+  <span>✨ gmux — multi-agent monitor. </span>
+  <a href="https://gmux.ai" target="_blank" rel="noopener">More at gmux.ai →</a>
 </div>
 
 <!-- Gesture tutorial overlay (press ? to open) -->
@@ -1299,16 +1423,6 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
           <input type="range" min="1" max="5" value="3" style="flex:1;accent-color:var(--accent)" id="opts-sens" oninput="setSens(this.value)">
           <span>High</span>
         </div>
-      </div>
-
-      <div class="opts-section">
-        <div class="opts-st">Agent avatar</div>
-        <select class="opts-sel" id="opts-avatar" onchange="setAvatarMode(this.value)">
-          <option value="off">Off</option>
-          <option value="crab" selected>Crab (default)</option>
-          <option value="cat">ASCII cat</option>
-          <option value="dot">Coloured dot</option>
-        </select>
       </div>
 
     </div><!-- /layout -->
@@ -1504,10 +1618,6 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
         <button class="cp-fs" id="cp-fs" onclick="toggleChatFullscreen()" title="Fullscreen (F)">⛶</button>
         <button class="cp-x" onclick="closeChat()">✕</button>
       </div>
-      <div id="cp-avatar">
-        <div id="cp-avatar-crab"></div>
-        <div id="cp-avatar-badge">—</div>
-      </div>
       <div id="cp-summary"></div>
       <!-- v2.3 voice strip -->
       <div id="voice-strip">
@@ -1519,16 +1629,12 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
       <div id="cp-msgs"></div>
       <div id="cp-inp-wrap">
         <textarea id="cp-inp" rows="1" placeholder="Send a message…" onkeydown="chatKey(event)" oninput="autoResize(this)"></textarea>
-        <button class="cp-hist" id="cp-hist" onclick="recallLastPrompt()" title="Last prompt (↑ when input empty)">↑</button>
+        <button class="cp-hist" id="cp-hist" onclick="recallLastPrompt()" ondblclick="recallLastPrompt(true)" title="Click → jump to last user message  ·  double-click → load it into input  ·  ↑ key cycles history">↑</button>
         <button class="cp-ptt" id="cp-ptt" onmousedown="startPTT()" onmouseup="stopPTT()" ontouchstart="startPTT()" ontouchend="stopPTT()">🎙</button>
         <button class="cp-send" onclick="sendChat()">Send</button>
       </div>
-    </div>
-
-    <!-- Fullscreen agent avatar overlay -->
-    <div id="fs-avatar">
-      <div id="fs-avatar-crab"></div>
-      <div id="fs-avatar-label"></div>
+      <!-- Widescreen-only: todos as side panel during chat-fullscreen -->
+      <div class="cp-fs-todos" id="cp-fs-todos"></div>
     </div>
 
     <!-- Graph panel — v2.4: minimal header, just close + canvas -->
@@ -1760,6 +1866,91 @@ function fmtUptime(s) {
   if (s < 60) return s + 's';
   if (s < 3600) return Math.floor(s / 60) + 'm';
   return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+}
+
+/** Escape HTML in arbitrary text. Used everywhere user/agent text hits innerHTML. */
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Lightweight Markdown renderer for agent chat output.
+ * Handles: code fences (```lang … ```), inline `code`, **bold**, *italic*,
+ *          # headings, - / * lists, > blockquotes, [text](url) links,
+ *          horizontal rules ---, and paragraph breaks.
+ * Order matters: code first (so ** inside ``` isn't matched), then everything else.
+ * No external dependencies; ~80 lines of regex.
+ */
+function renderMarkdown(text) {
+  if (!text) return '';
+  let src = String(text);
+
+  // 1. Code fences ``` lang \n ... \n ```
+  const codeBlocks = [];
+  src = src.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, body) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push({ lang: (lang || '').toLowerCase(), body });
+    return `\u0000CODE${idx}\u0000`;
+  });
+
+  // 2. Escape HTML in the rest
+  src = escapeHtml(src);
+
+  // 3. Inline code `…`
+  src = src.replace(/`([^`\n]+)`/g, '<code class="md-inline">$1</code>');
+
+  // 4. Bold ** … ** and __ … __
+  src = src.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  src = src.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+
+  // 5. Italic * … * and _ … _ (skip if word-internal _ like file_name)
+  src = src.replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>');
+  src = src.replace(/(^|[^\w_])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
+
+  // 6. Headings #, ##, ### at line start
+  src = src.replace(/^### (.+)$/gm, '<h4 class="md-h">$1</h4>');
+  src = src.replace(/^## (.+)$/gm,  '<h3 class="md-h">$1</h3>');
+  src = src.replace(/^# (.+)$/gm,   '<h2 class="md-h">$1</h2>');
+
+  // 7. Horizontal rule
+  src = src.replace(/^---+$/gm, '<hr class="md-hr">');
+
+  // 8. Blockquote
+  src = src.replace(/^&gt; (.+)$/gm, '<blockquote class="md-bq">$1</blockquote>');
+
+  // 9. Links [text](url) — only safe http(s)/relative URLs
+  src = src.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // 10. Unordered list (-, *, +)
+  src = src.replace(/^(?:[-*+]) (.+)$/gm, '<li class="md-li">$1</li>');
+  src = src.replace(/(<li class="md-li">[\s\S]+?<\/li>)(?!\s*<li)/g, '<ul class="md-ul">$1</ul>');
+
+  // 11. Ordered list "1. ..."
+  src = src.replace(/^\d+\. (.+)$/gm, '<li class="md-li">$1</li>');
+
+  // 12. Restore code blocks (with syntax-class hook for future highlighting)
+  src = src.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => {
+    const { lang, body } = codeBlocks[Number(i)];
+    return `<pre class="md-code"${lang ? ` data-lang="${lang}"` : ''}><code>${escapeHtml(body)}</code></pre>`;
+  });
+
+  // 13. Paragraphs from blank-line gaps (only outside block elements we just made)
+  src = src
+    .split(/\n{2,}/)
+    .map(b => {
+      if (/^<(h\d|ul|ol|pre|blockquote|hr|li)/.test(b.trim())) return b;
+      return '<p class="md-p">' + b.replace(/\n/g, '<br>') + '</p>';
+    })
+    .join('\n');
+
+  return src;
 }
 
 /** Get RAM percentage of a "high" threshold (3GB = 100%) */
@@ -3797,30 +3988,27 @@ export { GestureRenderer };
 
 
 // ═══════════════════════════════════════════════════════════
-// MOCK TODO ITEMS per pane (simulate real todo breakdown)
+// v3.1 LIVE — TODO ITEMS per pane (formerly MOCK_TODOS)
+// ───────────────────────────────────────────────────────────
+// Now populated from backend at runtime. Two pathways:
+//   1. /api/state pane.todos[] — mirrored into TODOS on each state update
+//      (see applyRealStateExtras() below)
+//   2. /api/pane/:pid/todos — explicit refresh when chat opens or todo SSE
+//      event fires (see fetchTodos())
+// Items shape: { id, content, status, priority }
+//   status ∈ "pending" | "in-progress" | "completed"
+// Empty for panes with no AI / no active session.
 // ═══════════════════════════════════════════════════════════
-const MOCK_TODOS = {
-  '%1': ['Read gesture-engine.js','Wire renderer events','Test FIST gesture','Test SWIPE gestures','Handle multi-hand','Write docs','Compile bundle','Deploy to dev'],
-  '%2': ['Analyse user flow','Implement chat backend','Add streaming support','Test with agents','Code review'],
-  '%3': ['Read main.rs structure','Identify edit target','Make change to src/main.rs','Run tests'],
-  '%4': ['Enumerate TS files','Parse type signatures','Build type map JSON','Validate output','Generate report','Write test cases','Fix edge cases','Review output','Final QA'],
-  '%5': ['Run npm build','Run tests','Deploy to staging','Smoke test','Tag release'],
-  '%6': [],
-  '%7': ['Read GESTURES.md part 1','Read GESTURES.md part 2','Read GESTURES.md part 3'],
-  '%8': ['Setup build script','Configure webpack','Add polyfills','Link config','Test bundle','Fix exit errors'],
-};
+const TODOS = {};   // pane_id → [{id, content, status, priority}, ...]
 
-// Mock children processes per pane (hardware tab)
-const MOCK_CHILDREN = {
-  '%1': [{name:'node',ram:480},{name:'esbuild',ram:92},{name:'fsevents',ram:31}],
-  '%2': [{name:'node',ram:320},{name:'openssl',ram:18}],
-  '%3': [{name:'node',ram:180},{name:'ripgrep',ram:12}],
-  '%4': [{name:'node',ram:890},{name:'tsc',ram:340},{name:'glob',ram:22},{name:'prettier',ram:88}],
-  '%5': [{name:'node',ram:680},{name:'webpack',ram:1200},{name:'terser',ram:140}],
-  '%6': [],
-  '%7': [{name:'node',ram:420}],
-  '%8': [{name:'node',ram:620},{name:'babel',ram:340}],
-};
+// ═══════════════════════════════════════════════════════════
+// v3.1 LIVE — CHILD PROCESSES per pane (formerly MOCK_CHILDREN)
+// ───────────────────────────────────────────────────────────
+// Populated from /api/state pane.children, which monitor.py builds via psutil
+// by walking the bun process tree. Sorted by RAM desc, top 8 only.
+// Items shape: { name, ram_mb, pid }
+// ═══════════════════════════════════════════════════════════
+const CHILDREN = {}; // pane_id → [{name, ram_mb, pid}, ...]
 
 // ═══════════════════════════════════════════════════════════
 // v2.3 — TRACK 5: AI PERFORMANCE
@@ -3873,10 +4061,115 @@ const TOOL_KIND = t => {
   if (k.includes('task')||k.includes('agent'))  return 'task';
   return 'other';
 };
-// Seed each pane's tool log from existing tool_history mock
-for (const pid in MOCK_PANES) {
-  const hist = MOCK_PANES[pid].tool_history || [];
-  hist.forEach((t, i) => pushToolEvent(pid, t));
+// v3.1 LIVE — Tool log is now seeded from real /api/state pane.tool_history
+// at runtime. See applyRealStateExtras() below.  No mock seeding required.
+
+// ═══════════════════════════════════════════════════════════
+// v3.1 LIVE — BACKEND API CLIENT
+// ───────────────────────────────────────────────────────────
+// Centralised helpers for talking to monitor.py's HTTP API at :8769.
+// All UI components should go through these (or read from the local stores
+// they populate: TODOS, CHAT, CHILDREN, TOOL_LOG) rather than fetching
+// from OpenCode directly.
+// ═══════════════════════════════════════════════════════════
+const GMUX_API_BASE = (window.GMUX_API || 'http://127.0.0.1:8769').replace(/\/$/, '');
+
+/** Pull the full todo list for a pane and cache it in TODOS[pane_id]. */
+async function fetchTodos(pane_id) {
+  if (!pane_id) return [];
+  try {
+    const enc = encodeURIComponent(pane_id);
+    const r = await fetch(`${GMUX_API_BASE}/api/pane/${enc}/todos`,
+                         { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return TODOS[pane_id] || [];
+    const j = await r.json();
+    if (j.ok && Array.isArray(j.data)) {
+      TODOS[pane_id] = j.data;
+      return j.data;
+    }
+  } catch (e) { /* keep cached value */ }
+  return TODOS[pane_id] || [];
+}
+
+/** Pull recent chat messages for a pane, convert from OpenCode shape,
+ *  and cache the flat list in CHAT[pane_id]. */
+async function fetchChat(pane_id, limit = 50) {
+  if (!pane_id) return [];
+  try {
+    const enc = encodeURIComponent(pane_id);
+    const r = await fetch(`${GMUX_API_BASE}/api/pane/${enc}/messages?limit=${limit}`,
+                         { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return CHAT[pane_id] || [];
+    const j = await r.json();
+    if (j.ok && Array.isArray(j.data)) {
+      const flat = convertOpenCodeMessages(j.data);
+      CHAT[pane_id] = flat;
+      return flat;
+    }
+  } catch (e) { /* keep cached value */ }
+  return CHAT[pane_id] || [];
+}
+
+/** Convert OpenCode's message structure into the UI's flat shape.
+ *  OpenCode message = { info: {role,...}, parts: [{type, text|tool|...}] }
+ *  UI message       = { role, text, streaming? }
+ *  We flatten so each text part and each tool call becomes its own bubble.
+ */
+function convertOpenCodeMessages(messages) {
+  const out = [];
+  for (const msg of messages || []) {
+    const info = msg.info || {};
+    const role = info.role || 'system';   // 'user' | 'assistant' | 'system'
+    const parts = msg.parts || [];
+
+    for (const part of parts) {
+      if (part.type === 'text' && part.text) {
+        // user → user bubble, assistant → agent bubble
+        out.push({
+          role: role === 'assistant' ? 'agent' : role,
+          text: part.text,
+        });
+      } else if (part.type === 'tool' && part.tool) {
+        // tool calls render as a "tool" bubble; show name + brief input
+        const state = part.state || {};
+        const input = state.input || {};
+        // Pick a single representative input field for display
+        const argStr = input.filePath || input.command || input.pattern ||
+                       input.url || input.query || '';
+        out.push({
+          role: 'tool',
+          text: argStr ? `${part.tool}: ${argStr}` : part.tool,
+        });
+      }
+      // step-start / step-finish / patch parts are skipped — internal events
+    }
+  }
+  return out;
+}
+
+/** Mirror per-pane "extras" from the /api/state payload into our local stores.
+ *  Called from the data-source callback in initDataSource. This keeps the
+ *  hot DOM render path reading from in-memory stores (no awaits). */
+function applyRealStateExtras(panesObj) {
+  for (const pid in panesObj) {
+    const p = panesObj[pid];
+    if (!p) continue;
+    // Todos: mirror the in-state copy
+    if (Array.isArray(p.todos)) TODOS[pid] = p.todos;
+    // Children processes
+    if (Array.isArray(p.children)) CHILDREN[pid] = p.children;
+    // Tool history: append any new tool events into TOOL_LOG
+    if (Array.isArray(p.tool_history)) {
+      // p.tool_history is just a list of tool names. We can't get timestamps
+      // from /api/state, so we treat new entries since last apply as "just now".
+      const log = TOOL_LOG[pid] || (TOOL_LOG[pid] = []);
+      const seen = log.length;
+      const fresh = p.tool_history.slice(seen);
+      for (const t of fresh) {
+        pushToolEvent(pid, t);
+      }
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3888,70 +4181,30 @@ let voiceStream   = null;
 let voiceLevel    = 0;       // 0..1 RMS
 let voiceWaveBuf  = new Array(60).fill(0);
 let voiceTranscript = '';
-const MOCK_PHRASES = [
-  'okay let\'s look at the next agent',
-  'approve that one and keep going',
-  'jump to the waiting agent please',
-  'switch to the deepseek session',
-  'show me the hardware on this pane',
-  'what is taking so long here',
-];
-let mockTransIdx = 0; let mockTransPos = 0;
+// v3.1 LIVE — VOICE phrase rotator removed; real Web Speech API drives the
+// transcript now (see _startSR in toggleVoice).  No fallback mock phrases.
 
-// Mock chat history per agent
-const CHAT = {
-  '%1':[
-    {role:'user', text:'Build the gesture engine and wire it to the renderer.'},
-    {role:'agent',text:'On it. Reading the existing renderer first, then I\'ll wire up the engine events.'},
-    {role:'tool', text:'read: src/gesture-renderer.js (1186 lines)'},
-    {role:'agent',text:'Done reading. Now wiring gestureStart events...'},
-    {role:'tool', text:'write: src/gesture-engine.js'},
-    {role:'agent',text:'✓ Compiled gesture-engine.js (1.2s)\nEngine wired. All gesture events now feed through to the renderer correctly.'},
-  ],
-  '%2':[{role:'system',text:'Agent waiting for instruction.'}],
-  '%3':[
-    {role:'user',text:'Find all files that reference gesture and check if main.rs needs updating.'},
-    {role:'agent',text:'Searching now...'},
-    {role:'tool', text:'grep -r "gesture" src/  →  47 matches in 8 files'},
-    {role:'agent',text:'Found the references. main.rs at line 302 needs updating — confirming with you first.'},
-    {role:'permission',text:'Request to edit: src/main.rs'},
-  ],
-  '%4':[
-    {role:'user',text:'Scan all TypeScript files and generate a type map.'},
-    {role:'agent',text:'Scanning src/**/*.ts...', streaming:true},
-  ],
-  '%5':[
-    {role:'user',text:'Run the build and deploy.'},
-    {role:'tool', text:'npm run build  →  ✓ Build passed (3.4s)'},
-    {role:'tool', text:'npm run deploy  →  ✓ Deployment complete.'},
-    {role:'agent',text:'Build and deploy successful. All checks passed.'},
-  ],
-  '%6':[{role:'system',text:'No AI agent in this pane.'}],
-  '%7':[
-    {role:'user',text:'Read the gesture docs and summarise the hand mapping.'},
-    {role:'tool', text:'read: docs/GESTURES.md [1/3]...', streaming:true},
-  ],
-  '%8':[
-    {role:'user',text:'Run the build script.'},
-    {role:'tool', text:'node build.js'},
-    {role:'error',text:'Error: Cannot find module \'./config\'\n✗ Exit code 1'},
-    {role:'agent',text:'Build failed. The config module is missing. Checking path issue.'},
-  ],
-};
+// ═══════════════════════════════════════════════════════════
+// v3.1 LIVE — CHAT HISTORY per pane (formerly hardcoded const CHAT)
+// ───────────────────────────────────────────────────────────
+// Now a runtime cache populated from /api/pane/:pid/messages.
+// Two pathways:
+//   1. fetchChat(pane_id) — explicit pull when chat panel opens
+//   2. Local optimistic push when user sends a message (sendChat)
+// Items shape: { role, text, streaming? }
+//   role ∈ "user" | "agent" | "tool" | "system" | "permission" | "error"
+// The transformer convertOpenCodeMessages() collapses OpenCode's parts[]
+// structure into this flat shape.
+// ═══════════════════════════════════════════════════════════
+const CHAT = {};    // pane_id → [{role, text, streaming?}, ...]
 
 // Sessions — starts with mock list, replaced with real list when live data arrives
-let SESSIONS = [
-  {name:'gmux',     color:'#818cf8'},
-  {name:'work',     color:'#34d399'},
-  {name:'personal', color:'#f87171'},
-];
-// Mock demo: sprinkle panes across sessions for filtering demo before live data arrives
-(function reassignSessionsForDemo(){
-  const map = {'%5':'work','%6':'work','%7':'personal','%8':'personal'};
-  for (const id in MOCK_PANES) {
-    if (map[id]) MOCK_PANES[id].session_name = map[id];
-  }
-})();
+// v3.1 LIVE — session list starts empty and is populated from real backend
+// data via _deriveSessions() in initDataSource(). The previous mock list
+// (gmux/work/personal) and the demo-only reassignSessionsForDemo IIFE
+// have been removed.
+let SESSIONS = [];
+
 let activeSession = 'all';   // start in "all" so user can see every agent across sessions
 
 // Stable colour per session name (hash-based so it's consistent across reloads)
@@ -4044,9 +4297,15 @@ const PRESETS = [
 // ═══════════════════════════════════════════════════════════
 // APP STATE
 // ═══════════════════════════════════════════════════════════
+// v3.1 LIVE: `panes` and `paneOrder` start seeded from MOCK_PANES as a
+// loading placeholder.  Within ~1s the data source replaces them with real
+// data from /api/state (or, if the backend is unreachable, the mock
+// evolution loop keeps the placeholder alive so the UI still has something
+// to render — see initDataSource).
 let panes      = JSON.parse(JSON.stringify(MOCK_PANES));
 let paneOrder  = Object.keys(MOCK_PANES);
-let selectedId = '%3';
+// Default selection — overridden in initDataSource once real pane IDs arrive
+let selectedId = paneOrder[0] || '%1';
 let sortMode   = 'priority';
 let tabsBottom = false;
 let dimPanes   = true;
@@ -4199,7 +4458,7 @@ function render() {
   renderSparklines(arr);
   if (chatOpen) updateChatHead();
   renderGestureMap();
-  if (chatOpen && panes[selectedId]) updateAvatar(panes[selectedId]);
+  // avatar removed in v3.2
 }
 
 // ── v2.3 perf strip in statusbar ──
@@ -4323,129 +4582,7 @@ function renderSidebar(arr) {
   }).join('');
 }
 
-// ═══════════════════════════════════════════════════════════
-// AGENT AVATAR — mini crab from aquarium system
-// ═══════════════════════════════════════════════════════════
-const AVA_COLORS = {
-  working:'#4ade80', waiting:'#f87171', permission:'#fb923c',
-  done:'#a78bfa', error:'#ef4444', idle:'#94a3b8', not_started:'#64748b',
-};
-const AVA_LABELS = {
-  working:'WORKING', waiting:'WAITING', permission:'NEEDS YOU',
-  done:'DONE', error:'ERROR', idle:'IDLE', not_started:'STARTING',
-};
-
-function _blend(hex, target, t) {
-  const a = [parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];
-  const b = target==='#ffffff'?[255,255,255]:[0,0,0];
-  return '#'+a.map((v,i)=>Math.round(v+(b[i]-v)*t).toString(16).padStart(2,'0')).join('');
-}
-
-function makeCrabSVG(color, size=52) {
-  const hi = _blend(color,'#ffffff',.38), dk = _blend(color,'#000000',.38);
-  const id = color.replace('#','');
-  return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <line x1="14" y1="37" x2="4"  y2="51" stroke="${dk}" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="21" y1="41" x2="8"  y2="53" stroke="${dk}" stroke-width="3"   stroke-linecap="round"/>
-  <line x1="44" y1="37" x2="60" y2="51" stroke="${dk}" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="49" y1="41" x2="56" y2="53" stroke="${dk}" stroke-width="3"   stroke-linecap="round"/>
-  <line x1="16" y1="33" x2="5"  y2="43" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="48" y1="33" x2="59" y2="43" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
-  <ellipse cx="8"  cy="24" rx="7" ry="5" fill="${dk}"/>
-  <ellipse cx="56" cy="24" rx="7" ry="5" fill="${dk}"/>
-  <line x1="14" y1="28" x2="8"  y2="25" stroke="${color}" stroke-width="3.8" stroke-linecap="round"/>
-  <line x1="50" y1="28" x2="56" y2="25" stroke="${color}" stroke-width="3.8" stroke-linecap="round"/>
-  <ellipse cx="32" cy="34" rx="20" ry="15" fill="${color}"/>
-  <ellipse cx="26" cy="27" rx="9"  ry="5"  fill="${hi}" opacity=".3"/>
-  <path d="M18 30 Q32 22 46 30" fill="none" stroke="${hi}" stroke-width="1" opacity=".35"/>
-  <line x1="26" y1="22" x2="23" y2="15" stroke="${dk}" stroke-width="2.2" stroke-linecap="round"/>
-  <line x1="38" y1="22" x2="41" y2="15" stroke="${dk}" stroke-width="2.2" stroke-linecap="round"/>
-  <circle cx="22" cy="14" r="4"   fill="#080808"/>
-  <circle cx="42" cy="14" r="4"   fill="#080808"/>
-  <circle cx="21" cy="13" r="1.5" fill="#fff" opacity=".85"/>
-  <circle cx="41" cy="13" r="1.5" fill="#fff" opacity=".85"/>
-  <line x1="18" y1="43" x2="10" y2="56" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
-  <line x1="46" y1="43" x2="54" y2="56" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
-  <defs>
-    <radialGradient id="sg${id}" cx="40%" cy="35%" r="60%">
-      <stop offset="0%"   stop-color="#fff" stop-opacity=".28"/>
-      <stop offset="100%" stop-color="#000" stop-opacity=".2"/>
-    </radialGradient>
-  </defs>
-</svg>`;
-}
-
-function updateAvatar(pane) {
-  if (!pane) return;
-  const state = pane.state || 'idle';
-  const color = AVA_COLORS[state] || '#94a3b8';
-  const label = AVA_LABELS[state] || state.toUpperCase();
-  const mode = localStorage.getItem('gmux.avatarMode') || 'crab';
-
-  // Render avatar based on mode
-  function avatarHtml(size) {
-    switch (mode) {
-      case 'off':  return '';
-      case 'cat':  return makeCatAscii(color, state, size);
-      case 'dot':  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 ${size/3}px ${color}88;display:flex;align-items:center;justify-content:center;font-size:${size/3}px;color:white;font-weight:700">${pane.window_index||''}</div>`;
-      case 'crab':
-      default:     return makeCrabSVG(color, size);
-    }
-  }
-
-  // Chat panel mini avatar
-  const craEl  = document.getElementById('cp-avatar-crab');
-  const badgeEl = document.getElementById('cp-avatar-badge');
-  const wrapEl  = document.getElementById('cp-avatar');
-  if (wrapEl) wrapEl.style.display = (mode === 'off') ? 'none' : '';
-  if (craEl) {
-    craEl.innerHTML = avatarHtml(48);
-    craEl.className = state;
-    craEl.style.color = color;
-  }
-  if (badgeEl) {
-    badgeEl.textContent = label;
-    badgeEl.style.background = color+'22';
-    badgeEl.style.color = color;
-    badgeEl.style.border = `1px solid ${color}44`;
-  }
-
-  // Fullscreen avatar
-  const fsEl    = document.getElementById('fs-avatar');
-  const fsCrab  = document.getElementById('fs-avatar-crab');
-  const fsLabel = document.getElementById('fs-avatar-label');
-  if (fsEl) {
-    const isFs = document.getElementById('app')?.classList.contains('chat-fullscreen') ||
-                 (fullscreenId !== null);
-    fsEl.classList.toggle('visible', !!isFs && mode !== 'off');
-    if (fsCrab) { fsCrab.innerHTML = avatarHtml(80); fsCrab.style.color = color; }
-    if (fsLabel) fsLabel.textContent = `${pane.window_name} · ${label}`;
-  }
-}
-
-// ASCII cat avatar — pixel-perfect cat face that changes based on state.
-// Inspired by the qalcode2 cats.
-function makeCatAscii(color, state, size=52) {
-  // Different cat poses per state
-  const cats = {
-    working:    ['  /\\_/\\  ', ' ( o.o ) ', '  > ^ <  '],
-    waiting:    ['  /\\_/\\  ', ' ( -.- ) ', '  ( = ) '],
-    permission: ['  /\\_/\\  ', ' ( @.@ ) ', '  > ! <  '],
-    done:       ['  /\\_/\\  ', ' ( ^.^ ) ', '  ( ~ )  '],
-    error:      ['  /\\_/\\  ', ' ( x.x ) ', '  > ~ <  '],
-    idle:       ['  /\\_/\\  ', ' ( =.= ) ', '  ~~~~~  '],
-  };
-  const lines = cats[state] || cats.idle;
-  const fontPx = Math.max(8, Math.floor(size / 4));
-  return `<pre style="margin:0;padding:0;color:${color};font-size:${fontPx}px;line-height:1.05;text-shadow:0 0 ${size/8}px ${color}88;font-family:monospace;text-align:center;">${lines.join('\n')}</pre>`;
-}
-
-window.setAvatarMode = function(mode) {
-  localStorage.setItem('gmux.avatarMode', mode);
-  toast(`Avatar: ${mode}`);
-  // Re-render current chat panel to apply
-  if (chatOpen && panes[selectedId]) updateAvatar(panes[selectedId]);
-};
+// Avatar system removed in v3.2 — archived to extras/avatar_system/
 
 // ═══════════════════════════════════════════════════════════
 // PANE GRID
@@ -4576,22 +4713,18 @@ function updatePaneEl(el, p) {
   el.className = `pane${isFS?' fullscreen':''}${isSel?' lit sel-pane':dimPanes?' dim':' lit'}${isVoiceTarget?' voice-target':''}`;
   el.draggable = true;
 
-  // Build todo items HTML — prefer REAL todos from backend, fallback to mock
-  // Backend provides: [{id, content, status: "completed"|"pending"|"in-progress", priority}]
-  // Old mock provides: ["string", "string"]
-  let todoSource = [];
-  if (Array.isArray(p.todos) && p.todos.length > 0) {
-    todoSource = p.todos;  // real backend data
-  } else if (MOCK_TODOS[p.pane_id]) {
-    // fallback to mock only if we have no backend todos AND the mock has data for this pane
-    todoSource = MOCK_TODOS[p.pane_id].map((text, i) => ({
-      id: String(i), content: text,
-      status: i < done ? 'completed' : (i === done && p.state==='working' ? 'in-progress' : 'pending'),
-    }));
-  }
+  // ── v3.1 LIVE: TODOS ────────────────────────────────────────────────
+  // Source order:
+  //   1. p.todos[] from the /api/state payload (backend mirror)
+  //   2. TODOS[pane_id] from explicit /api/pane/:pid/todos refresh
+  // Items shape: { id, content, status, priority }
+  //   status ∈ "pending" | "in-progress" | "completed"
+  const todoSource = (Array.isArray(p.todos) && p.todos.length)
+    ? p.todos
+    : (TODOS[p.pane_id] || []);
   const todoHtml = todoSource.length > 0 ? todoSource.map((t) => {
-    const text   = (typeof t === 'string') ? t : (t.content || '');
-    const status = (typeof t === 'string') ? '' : (t.status || '');
+    const text   = t.content || '';
+    const status = t.status  || '';
     const isDone   = status === 'completed';
     const isActive = status === 'in-progress';
     const cls    = isDone ? ' done' : isActive ? ' active' : '';
@@ -4602,18 +4735,16 @@ function updatePaneEl(el, p) {
     </div>`;
   }).join('') : `<div style="color:var(--text-dim);font-size:13px;padding:10px 0">No tasks recorded</div>`;
 
-  // Build children HTML — prefer real children from backend
-  // Backend provides: [{name, ram_mb}]
-  let childrenSource = [];
-  if (Array.isArray(p.children) && p.children.length > 0) {
-    childrenSource = p.children.map(ch => ({ name: ch.name || '?', ram: ch.ram_mb || 0 }));
-  } else if (MOCK_CHILDREN[p.pane_id]) {
-    childrenSource = MOCK_CHILDREN[p.pane_id];
-  }
+  // ── v3.1 LIVE: CHILDREN PROCESSES ───────────────────────────────────
+  // From p.children[] populated by monitor.py via psutil tree walk.
+  // Items shape: { name, ram_mb, pid }
+  const childrenSource = (Array.isArray(p.children) && p.children.length)
+    ? p.children
+    : (CHILDREN[p.pane_id] || []);
   const childrenHtml = childrenSource.length > 0 ? childrenSource.map(ch =>
     `<div class="hw-child">
-      <span class="hw-child-name">${ch.name}</span>
-      <span class="hw-child-ram">${ch.ram} MB</span>
+      <span class="hw-child-name">${ch.name || '?'}</span>
+      <span class="hw-child-ram">${ch.ram_mb || 0} MB</span>
     </div>`
   ).join('') : '<div style="color:var(--muted);font-size:11px">No child processes</div>';
 
@@ -4700,7 +4831,7 @@ function updatePaneEl(el, p) {
               }).join('') || '<div style="font-size:11px;color:var(--muted)">No tool calls yet</div>'}
             </div>
           </div>
-          ${children.length > 0 ? `<div class="hw-section">
+          ${childrenSource.length > 0 ? `<div class="hw-section">
             <div class="hw-lbl">Processes</div>
             ${childrenHtml}
           </div>` : ''}
@@ -4897,11 +5028,21 @@ function jumpToWaiting() {
 // CHAT PANEL
 // ═══════════════════════════════════════════════════════════
 function openChat(id) {
-  updateAvatar(panes[id]);
+  // avatar removed in v3.2
   selectedId = id; chatOpen = true;
   $('chat-panel').classList.add('open');
-  renderChatPanel(panes[id]);
+  renderChatPanel(panes[id]);   // shows cached CHAT[id] (may be empty first time)
   render();
+  // v3.1 LIVE: pull fresh chat history from backend in the background.
+  // First open of a pane gets an "empty" render flash, then real messages
+  // appear ~200-500ms later. Subsequent opens use the cache instantly.
+  fetchChat(id).then(flat => {
+    if (selectedId === id && chatOpen) renderChatPanel(panes[id]);
+  }).catch(()=>{});
+  // Also refresh todos in case the embedded /api/state copy is stale
+  fetchTodos(id).then(() => {
+    if (selectedId === id) render();
+  }).catch(()=>{});
 }
 window.closeChat = function() {
   chatOpen = false;
@@ -4911,15 +5052,59 @@ window.closeChat = function() {
   render();
 };
 
-// v2.4 — chat panel fullscreen toggle
+// v3.2 — chat panel fullscreen toggle (keeps sidebar + session tabs visible)
 let chatFullscreen = false;
 window.toggleChatFullscreen = function() {
   chatFullscreen = !chatFullscreen;
-  $('chat-panel').classList.toggle('fullscreen', chatFullscreen);
+  const cp = $('chat-panel');
+  cp.classList.toggle('fullscreen', chatFullscreen);
+  if (chatFullscreen) {
+    // Measure sidebar + topbar so fullscreen layer aligns under them
+    const sb = $('sidebar-panel');
+    const tb = $('topbar');
+    const tabs = $('session-tabs');
+    const left = sb ? sb.getBoundingClientRect().right : 240;
+    const topbarHeight = tb ? tb.getBoundingClientRect().bottom : 48;
+    const tabsBottom = tabs ? tabs.getBoundingClientRect().bottom : topbarHeight;
+    cp.style.setProperty('--cp-fs-left', left + 'px');
+    cp.style.setProperty('--cp-fs-top',  tabsBottom + 'px');
+    // If selected pane has todos, enable side panel
+    renderFullscreenTodos();
+  }
   const btn = $('cp-fs');
-  if (btn) btn.textContent = chatFullscreen ? '⛶' : '⛶';
-  toast(chatFullscreen ? 'Chat fullscreen — Esc to exit' : 'Chat windowed');
+  if (btn) btn.textContent = chatFullscreen ? '⊟' : '⛶';
+  toast(chatFullscreen ? 'Chat fullscreen — Esc to exit · switch agents from sidebar' : 'Chat windowed');
 };
+
+// Render the right-side todos panel during chat-fullscreen on widescreen displays.
+function renderFullscreenTodos() {
+  const box = $('cp-fs-todos');
+  if (!box) return;
+  const cp = $('chat-panel');
+  const p = panes[selectedId];
+  if (!p) { cp.classList.remove('has-todos'); box.innerHTML = ''; return; }
+  const todos = (Array.isArray(p.todos) && p.todos.length) ? p.todos : (TODOS[p.pane_id] || []);
+  if (!todos.length) { cp.classList.remove('has-todos'); box.innerHTML = ''; return; }
+  cp.classList.add('has-todos');
+  const done = todos.filter(t => t.status === 'completed').length;
+  const total = todos.length;
+  const rows = todos.map(t => {
+    const status = t.status || '';
+    const cls = status === 'completed' ? ' done' : status === 'in-progress' ? ' active' : '';
+    const icon = status === 'completed' ? '✓' : status === 'in-progress' ? '◐' : '';
+    return `<div class="cp-fs-todo-row${cls}">
+      <div class="cp-fs-todo-check">${icon}</div>
+      <div class="cp-fs-todo-text">${escapeHtml(t.content || '')}</div>
+    </div>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="cp-fs-todos-title">
+      <span>Tasks · ${p.window_name||''}</span>
+      <span style="color:var(--accent);font-weight:600">${done}/${total}</span>
+    </div>
+    <div class="cp-fs-todos-list">${rows}</div>
+  `;
+}
 
 function updateChatHead() {
   const p = panes[selectedId];
@@ -4932,60 +5117,25 @@ function updateChatHead() {
   st.textContent = STATE_LABEL[p.state];
 }
 
-// Real chat history cache — fetched from OpenCode API per pane
-// Key: pane_id → array of {role, text, streaming?}
-// Refreshed when chat opens for a pane, or every 10s while panel is open
-const REAL_CHAT = {};
-const _chatFetchTime = {};   // pane_id → timestamp of last fetch (rate-limit)
+// v3.1 LIVE — chat refresh helper for the chat panel.
+// ───────────────────────────────────────────────────────────
+// Now delegates entirely to fetchChat() which hits the backend proxy at
+// /api/pane/:pid/messages instead of OpenCode directly. The previous
+// REAL_CHAT / _fetchRealChat path that talked to OpenCode has been removed
+// because (a) it duplicated CHAT/fetchChat and (b) the backend proxy is the
+// single source of truth that knows port + session_id + directory.
+//
+// Rate-limit per pane so quick UI churn (re-renders during streaming) doesn't
+// hammer the backend.
+const _chatFetchTime = {};   // pane_id → ms of last fetch
 
-async function _fetchRealChat(p) {
-  if (!p?.api_port || !p?.session_id || !p?.cwd) return null;
-  // Rate-limit per pane (don't refetch within 3s)
-  const last = _chatFetchTime[p.pane_id] || 0;
-  if (Date.now() - last < 3000) return REAL_CHAT[p.pane_id] || null;
-  _chatFetchTime[p.pane_id] = Date.now();
-
-  try {
-    const url = `http://127.0.0.1:${p.api_port}/session/${p.session_id}/message?directory=${encodeURIComponent(p.cwd)}`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(3500) });
-    if (!r.ok) return null;
-    const msgs = await r.json();
-    if (!Array.isArray(msgs)) return null;
-
-    // Convert OpenCode message format to UI chat format
-    const out = [];
-    for (const msg of msgs) {
-      const info = msg.info || {};
-      const role = info.role;
-      const parts = msg.parts || [];
-      // Concatenate text parts for this message
-      const textParts = parts.filter(p => p.type === 'text');
-      const toolParts = parts.filter(p => p.type === 'tool');
-
-      if (textParts.length > 0) {
-        const text = textParts.map(p => p.text || '').join('\n').trim();
-        if (text) {
-          out.push({ role: role === 'user' ? 'user' : 'agent', text });
-        }
-      }
-      // Show tool calls as "tool" role entries (collapsed)
-      for (const t of toolParts) {
-        const tname = t.tool || 'tool';
-        const ts = t.state || {};
-        const status = ts.status || '';
-        if (status === 'completed' || status === 'running') {
-          out.push({
-            role: 'tool',
-            text: `${tname}${status === 'running' ? ' (running)' : ''}: ${(ts.title || ts.input?.command || '').slice(0,80)}`,
-          });
-        }
-      }
-    }
-    REAL_CHAT[p.pane_id] = out;
-    return out;
-  } catch (e) {
-    return null;
-  }
+async function _refreshChatPanel(pane_id) {
+  if (!pane_id) return;
+  const last = _chatFetchTime[pane_id] || 0;
+  if (Date.now() - last < 3000) return;     // throttled
+  _chatFetchTime[pane_id] = Date.now();
+  await fetchChat(pane_id);
+  if (selectedId === pane_id && chatOpen) renderChatPanel(panes[pane_id]);
 }
 
 function renderChatPanel(p) {
@@ -5010,35 +5160,35 @@ function renderChatPanel(p) {
   </div>`;
   $('cp-summary').innerHTML = sum;
 
-  // Messages — prefer REAL_CHAT (from backend) over mock CHAT
-  let hist = REAL_CHAT[p.pane_id];
-  if (!hist || hist.length === 0) {
-    hist = CHAT[p.pane_id] || [{role:'system', text:'No conversation history.'}];
-  }
+  // v3.1 LIVE: messages come from CHAT[pane_id] populated by fetchChat()
+  // and by optimistic updates in sendChat(). Falls back to a placeholder
+  // when we have nothing cached yet.
+  const hist = CHAT[p.pane_id] || [{role:'system', text:'No conversation history yet.'}];
   $('cp-msgs').innerHTML = hist.map(m => {
     const role  = m.role==='error'?'tool':m.role==='permission'?'tool':m.role;
     const extra = m.streaming?' streaming':'';
     const errStyle = m.role==='error'?' style="border-left:3px solid var(--error)"':'';
+    // Render markdown for agent/assistant messages; keep user/tool plain to preserve quotes etc.
+    const body = (m.role === 'agent' || m.role === 'assistant')
+      ? renderMarkdown(m.text)
+      : escapeHtml(m.text).replace(/\n/g,'<br>');
     return `<div class="msg ${role}">
       <div class="msg-role ${role}">${m.role==='permission'?'⚠ Permission':m.role}</div>
-      <div class="msg-body${extra}"${errStyle}>${m.text.replace(/\n/g,'<br>')}</div>
+      <div class="msg-body${extra}"${errStyle}>${body}</div>
     </div>`;
   }).join('');
   setTimeout(()=>{ $('cp-msgs').scrollTop=$('cp-msgs').scrollHeight; },50);
   _promptHistIdx = -1;
   _updateHistBtn(p.pane_id);
-  updateAvatar(p);
 
-  // Kick off background fetch of real chat; re-render when it arrives
-  if (p.api_port && p.session_id) {
-    _fetchRealChat(p).then(real => {
-      if (real && real.length > 0) {
-        // Re-render only if this pane is still selected
-        if (selectedId === p.pane_id && chatOpen) {
-          renderChatPanel(p);
-        }
-      }
-    });
+  // v3.2: refresh the fullscreen-todos side panel if open
+  if (chatFullscreen) renderFullscreenTodos();
+
+  // v3.1 LIVE: kick off a throttled background fetch.  We don't await — the
+  // current render runs immediately with cached CHAT, then re-renders when
+  // fresh data arrives (the fetch callback inside _refreshChatPanel does it).
+  if (p.api_port) {
+    _refreshChatPanel(p.pane_id);
   }
 }
 
@@ -5108,24 +5258,43 @@ function _historyNav(direction) {
   return true;
 }
 
-// One-click "fill last prompt" button
-window.recallLastPrompt = function() {
-  const h = PROMPT_HISTORY[selectedId] || [];
-  if (!h.length) { toast('No prompt history yet'); return; }
+// One-click button:
+//   single click  → scroll to last user message in the chat history + flash it
+//   double click  → fill the input with the last prompt (for re-submitting)
+window.recallLastPrompt = function(forceFill) {
   const inp = $('cp-inp');
-  if (!inp) return;
-  // Flash the button
   const btn = $('cp-hist');
   if (btn) { btn.classList.add('flash'); setTimeout(()=>btn.classList.remove('flash'),300); }
-  // If already navigating, keep stepping back; otherwise load the last one
-  if (_promptHistIdx === -1) {
-    _promptDraft = inp.value;
-    _promptHistIdx = h.length - 1;
+
+  // Scroll-to-last-user-message in the chat scroll area
+  const msgsBox = $('cp-msgs');
+  if (msgsBox) {
+    const userMsgs = msgsBox.querySelectorAll('.msg.user');
+    const last = userMsgs[userMsgs.length - 1];
+    if (last) {
+      last.scrollIntoView({behavior:'smooth', block:'center'});
+      last.classList.add('flash-highlight');
+      setTimeout(()=>last.classList.remove('flash-highlight'), 1500);
+    }
   }
-  inp.value = h[_promptHistIdx];
-  window.autoResize(inp);
-  inp.focus();
-  requestAnimationFrame(() => { inp.selectionStart = inp.selectionEnd = inp.value.length; });
+
+  // Hold Shift OR double-click within 400ms to also fill the input
+  const now = Date.now();
+  const isDouble = forceFill || (window._lastRecall && now - window._lastRecall < 400);
+  window._lastRecall = now;
+  if (isDouble && inp) {
+    const h = PROMPT_HISTORY[selectedId] || [];
+    if (!h.length) { toast('No prompt history yet'); return; }
+    if (_promptHistIdx === -1) {
+      _promptDraft = inp.value;
+      _promptHistIdx = h.length - 1;
+    }
+    inp.value = h[_promptHistIdx];
+    window.autoResize(inp);
+    inp.focus();
+    requestAnimationFrame(() => { inp.selectionStart = inp.selectionEnd = inp.value.length; });
+    toast('Last prompt loaded — Enter to send');
+  }
 };
 
 window.sendChat = async function() {
@@ -5179,34 +5348,36 @@ window.sendChat = async function() {
         if (resp.ok || resp.status === 204) sent = true;
       }
       if (sent) {
-        // Message sent — real response comes via SSE gmux-state update
+        // Message sent — real response comes via SSE gmux-state update.
+        // v3.1 LIVE: schedule a chat refresh to pull the assistant reply
+        // once the backend has it (~1-2s typically).
         const last = hist[hist.length-1];
         if (last?.streaming) {
           last.streaming = false;
           last.text = '✓ Sent — agent is processing…';
         }
         renderChatPanel(pane);
-        // Invalidate session cache so next send re-fetches (session may have advanced)
         delete _sessionIdCache[`${port}:${cwd}`];
+        // Two refreshes: one quick (catches fast replies) and one slower
+        // (catches longer tool-using replies).
+        setTimeout(() => _refreshChatPanel(selectedId), 1500);
+        setTimeout(() => _refreshChatPanel(selectedId), 5000);
         return;
       }
     } catch(e) {
-      console.warn('[gmux] sendChat real backend failed, using mock:', e);
-      // Remove the streaming placeholder if we added one
+      console.warn('[gmux] sendChat real backend failed:', e);
       if (hist[hist.length-1]?.streaming) hist.pop();
     }
   }
 
-  // ── Mock fallback (no OpenCode port known) ────────────────────────────
-  setTimeout(()=>{
-    hist.push({role:'agent', text:'Processing your request…', streaming:true});
-    if (chatOpen) renderChatPanel(panes[selectedId]);
-    setTimeout(()=>{
-      const last = hist[hist.length-1];
-      if (last) { last.streaming=false; last.text='Got it. Working on that now.'; }
-      if (chatOpen) renderChatPanel(panes[selectedId]);
-    }, 1800);
-  }, 400);
+  // v3.1 LIVE — no backend available: surface a real error instead of
+  // pretending we sent the message.  Previously we faked a chat exchange.
+  hist.push({
+    role: 'error',
+    text: 'Cannot reach agent — no API port discovered for this pane. '
+        + 'Check that the agent is running and monitor.py is connected.',
+  });
+  if (chatOpen) renderChatPanel(panes[selectedId]);
 };
 
 window.chatKey = function(e) {
@@ -5241,12 +5412,16 @@ window.autoResize = function(el) {
 window.startPTT = function() {
   pttActive=true; $('cp-ptt').classList.add('on');
 };
+// v3.1 LIVE — push-to-talk release
+// Previously appended a fake "(voice message sent)" / "Processing voice
+// message…" exchange to the local CHAT array. Now we just show a toast
+// and let the real voice path (Web Speech API + submitVoiceDraft) handle
+// actual message delivery to the agent.
 window.stopPTT = function() {
-  if (!pttActive) return; pttActive=false; $('cp-ptt').classList.remove('on');
-  const hist = CHAT[selectedId] = CHAT[selectedId]||[];
-  hist.push({role:'user',text:'(voice message sent)'});
-  setTimeout(()=>{ hist.push({role:'agent',text:'Processing voice message…',streaming:true}); if(chatOpen)renderChatPanel(panes[selectedId]); },400);
-  if (chatOpen) renderChatPanel(panes[selectedId]);
+  if (!pttActive) return;
+  pttActive = false;
+  $('cp-ptt').classList.remove('on');
+  toast('🎙 PTT released');
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -6258,21 +6433,21 @@ window.toggleVoice = async function() {
   render();
 };
 
+// v3.1 LIVE — voice draft submission
+// Funnels the recognised transcript through the same send path that
+// keyboard "Send" uses (window.sendChat). That path talks to OpenCode
+// directly (or via Tauri) and returns when the agent has been notified.
+// No more fake "Processing…" / "Got it" canned responses — the real
+// agent reply arrives via SSE and appears on the next chat refresh.
 function submitVoiceDraft() {
   const txt = voiceDraft.trim();
   if (!txt) return;
   voiceDraft = '';
   const inp = $('cp-inp');
-  if (inp) { inp.value=''; window.autoResize(inp); }
+  if (inp) { inp.value = txt; window.autoResize(inp); }
   if (!chatOpen) openChat(selectedId);
-  const hist = CHAT[selectedId] = CHAT[selectedId]||[];
-  hist.push({role:'user',text:txt});
-  renderChatPanel(panes[selectedId]);
-  setTimeout(()=>{
-    hist.push({role:'agent',text:'Processing your message…',streaming:true});
-    if(chatOpen)renderChatPanel(panes[selectedId]);
-    setTimeout(()=>{ const l=hist[hist.length-1]; if(l){l.streaming=false;l.text='Got it. Working on that now.';} if(chatOpen)renderChatPanel(panes[selectedId]); },1800);
-  },400);
+  // Delegate to the unified send path
+  window.sendChat();
   toast('✓ Voice message sent');
   window.toggleVoice();
 }
@@ -6666,13 +6841,14 @@ function toast(msg) {
 // Hidden long-press on the brand dot opens the public demo at gmux.ai/demo.
 // Also: ?demo or ?share URL flag reveals the demo banner.
 const DEMO_URL = 'https://gmux.ai/demo';
+// v3.1 LIVE: banner hidden by default — only shown when ?demo or ?share URL
+// flag is present, or via the brand triple-click / long-press easter eggs.
+// (The v3.0 demo build forced it on every page load; we don't want that
+// in the live build because it implies "this data is fake" which it isn't.)
 (function setupDemoBanner(){
-  // single-file demo build: always show banner
-  document.getElementById('demo-banner').classList.add('on');
-  return;
   const params = new URLSearchParams(location.search);
   if (params.has('demo') || params.has('share')) {
-    $('demo-banner').classList.add('on');
+    document.getElementById('demo-banner').classList.add('on');
   }
 })();
 (function setupBrandLongPress(){
@@ -6754,8 +6930,7 @@ _loadPersistedState();
 if (tabsBottom) { const ts=$('tabstrip'); if(ts){ts.classList.add('bottom');ts.style.order='10';} }
 if (showGraph) { const gp=$('graph-panel'); if(gp)gp.classList.add('open'); }
 // Restore avatar mode on dropdown
-const _avatarSel = $('opts-avatar');
-if (_avatarSel) _avatarSel.value = localStorage.getItem('gmux.avatarMode') || 'crab';
+// Avatar system removed in v3.2 — see extras/avatar_system/ for archive
 
 renderPresets();
 renderGestureMap();
@@ -6865,8 +7040,14 @@ const _lastTool = {};
 // Connect to data source (Tauri / HTTP / mock)
 const src = await initDataSource(panes, updated => {
   panes = updated;
-  // Feed tool-event buffers from data updates (NOT token rates — those are
-  // computed by the perf timer below to avoid double-counting).
+  // v3.1 LIVE: mirror per-pane extras (todos, children, tool_history) into
+  // the in-memory stores so renderGrid / renderChatPanel can read them
+  // synchronously without awaiting fetches.
+  applyRealStateExtras(updated);
+  // Feed tool-event buffers from the realtime current_tool field (this fires
+  // when the SSE event message.part.updated arrives with a "running" tool).
+  // applyRealStateExtras above handles bulk tool_history; this catches the
+  // very latest in-progress tool name even if it's not yet in history.
   for (const pid in updated) {
     const p = updated[pid];
     if (p.current_tool && p.current_tool !== _lastTool[pid]) {
@@ -6894,10 +7075,17 @@ $('sb-src').textContent = _srcLabel;
 $('sb-src').style.color = (src === 'tauri' || src === 'http' || src === 'http-poll') ? 'var(--accent)' : 'var(--muted)';
 $('sb-src').title = `Data source: ${src} · ${Object.keys(panes).length} agents · ${SESSIONS.length} sessions`;
 
-// v2.4 — single perf timer: bumps mock tokens for working agents AND records the
-// rolling rate for sparklines. Runs at 1 Hz. Uses light DOM updates only — does
-// NOT call full render() to avoid re-render storms while the data source is
-// also pushing updates every 2.2 s.
+// v3.1 LIVE — perf timer
+// ───────────────────────────────────────────────────────────
+// Runs at 1 Hz. Records the token-rate delta for sparklines and refreshes
+// the per-pane t/s readouts.  Token totals themselves come from the backend
+// (refreshed every 10s by the aggregate worker in monitor.py), so we no
+// longer fake values for "working" agents — pushTokenRate() simply samples
+// the latest cumulative count, and the buffer naturally shows zero deltas
+// between aggregate refreshes plus a spike when new tokens arrive.
+//
+// Doesn't call full render() — that would conflict with the data source's
+// own 2.2s render cycle. We touch only the perf strip and per-pane rate.
 let _perfTickRunning = false;
 const PERF_INTERVAL_MS = 1000;
 setInterval(() => {
@@ -6907,10 +7095,6 @@ setInterval(() => {
     for (const pid in panes) {
       const p = panes[pid];
       if (!p) continue;
-      if (p.state === 'working') {
-        const rate = 30 + Math.random()*60;
-        p.token_out = (p.token_out||0) + Math.floor(rate);
-      }
       pushTokenRate(pid, (p.token_in||0)+(p.token_out||0));
     }
     const arr = sorted();
