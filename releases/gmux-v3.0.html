@@ -826,9 +826,71 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
 .pp-dot{width:5px;height:5px;border-radius:50%;background:var(--border);}
 .pp-dot.on{background:var(--accent);}
 
-/* ── Options overlay ── */
-#opts-overlay{position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:none;align-items:flex-start;justify-content:flex-end;}
+/* ── v3.4 — "Coming soon" inline badge for in-development features ── */
+.coming-soon-badge{
+  display:inline-block;
+  font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:1px 5px;border-radius:3px;
+  background:rgba(251,146,60,.18);color:var(--permission);
+  border:1px solid rgba(251,146,60,.35);
+  vertical-align:middle;line-height:1.3;
+}
+
+/* ── v3.4 — Memory panel ──
+   Same collapsed/expanded pattern as #chat-panel and #graph-panel.
+   Width 0 by default, expands when .open is added. Slides in from the right. */
+:root { --memory-w: 420px; }
+#memory-panel{
+  width:0;flex-shrink:0;background:var(--surface);
+  border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:width 220ms cubic-bezier(.4,0,.2,1);
+}
+#memory-panel.open{width:var(--memory-w);}
+.mp-tabs-strip{
+  display:flex;gap:2px;padding:4px 8px;
+  border-bottom:1px solid var(--border);
+  background:rgba(0,0,0,.15);flex-shrink:0;
+}
+.mp-tab{
+  font-size:11px;font-weight:600;padding:5px 11px;border-radius:5px;
+  background:transparent;border:1px solid transparent;color:var(--text-dim);
+  cursor:pointer;font-family:var(--font);transition:all 120ms;
+}
+.mp-tab:hover{color:var(--text);background:rgba(255,255,255,.04);}
+.mp-tab.active{color:var(--text-bright);background:var(--card);border-color:var(--border);}
+.mp-body{flex:1;overflow-y:auto;padding:18px;}
+.mp-placeholder{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:30px 12px;text-align:center;
+}
+.mp-placeholder-icon{font-size:48px;opacity:0.55;line-height:1;}
+.mp-placeholder-title{font-size:14px;font-weight:700;color:var(--text);}
+.mp-placeholder-desc{font-size:12px;color:var(--text-dim);line-height:1.55;max-width:280px;margin:4px 0;}
+.mp-placeholder-tabs{
+  display:flex;flex-direction:column;gap:7px;width:100%;max-width:280px;
+  background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;margin-top:12px;
+}
+.mp-cs-row{display:flex;gap:9px;align-items:flex-start;font-size:11.5px;color:var(--text-dim);text-align:left;line-height:1.4;}
+.mp-cs-row strong{color:var(--text);font-weight:700;}
+.mp-placeholder-link{
+  margin-top:14px;font-size:11px;color:var(--accent);text-decoration:none;
+  padding:6px 12px;border:1px solid rgba(129,140,248,.3);border-radius:6px;
+  background:rgba(129,140,248,.07);transition:all 100ms;
+}
+.mp-placeholder-link:hover{background:rgba(129,140,248,.15);}
+
+/* ── Options overlay ──
+   Backdrop is fully transparent AND click-through so the user can:
+   1. See the live UI behind it (accurate colour preview when changing themes)
+   2. Click around the UI even with options still open (less disruptive)
+   The panel itself still receives clicks normally because we override
+   pointer-events on it below.
+   Close via ✕ button or Esc key. */
+#opts-overlay{position:fixed;inset:0;z-index:400;background:transparent;display:none;align-items:flex-start;justify-content:flex-end;pointer-events:none;}
 #opts-overlay.open{display:flex;}
+#opts-overlay #opts-panel{pointer-events:auto;}
 #opts-panel{width:340px;height:100vh;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;box-shadow:-8px 0 32px rgba(0,0,0,.4);}
 #opts-head{height:50px;display:flex;align-items:center;padding:0 16px;font-size:15px;font-weight:700;border-bottom:1px solid var(--border);flex-shrink:0;gap:10px;}
 .opts-x{margin-left:auto;width:28px;height:28px;border-radius:6px;background:none;border:1px solid var(--border);color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 100ms;}
@@ -849,6 +911,15 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
 .preset-swatch{display:flex;gap:2px;}
 .preset-dot{width:12px;height:12px;border-radius:3px;}
 .preset-name{font-size:10px;font-weight:700;color:var(--text-dim);text-align:center;}
+/* v3.4 — user themes get a hint that the title is click-to-rename */
+.preset-name.editable{cursor:text;padding:1px 4px;border-radius:3px;transition:background 100ms;}
+.preset-name.editable:hover{background:rgba(129,140,248,.12);color:var(--text);}
+.preset-rename-input{
+  font-family:var(--font);font-size:10px;font-weight:700;
+  background:var(--card-hi);color:var(--text);
+  border:1px solid var(--accent);border-radius:4px;
+  padding:1px 5px;width:90%;outline:none;text-align:center;
+}
 
 /* Colour rows */
 .opts-cr{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);}
@@ -1429,7 +1500,7 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
 </div>
 
 <!-- Options overlay -->
-<div id="opts-overlay" onclick="closeOptsOutside(event)">
+<div id="opts-overlay">
   <div id="opts-panel">
     <div id="opts-head">
       ⚙ Options
@@ -1585,6 +1656,11 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
     <button class="tbtn" id="btn-g" onclick="toggleGesture()">✋ Gesture</button>
     <button class="tbtn" id="btn-v" onclick="toggleVoice()">🎙 Voice</button>
     <button class="tbtn" onclick="toggleGraph()">🗂 Graph</button>
+    <!-- v3.4 — Memory panel (Knowledge_systems integration, demo state) -->
+    <button class="tbtn" onclick="toggleMemoryPanel()" title="Agent memory monitor (demo)">
+      🧠 Memory
+      <span class="coming-soon-badge">soon</span>
+    </button>
     <button class="tbtn" onclick="toggleOpts()">⚙ Options</button>
   </div>
 
@@ -1696,6 +1772,46 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
         <button class="ph-btn" style="width:20px;height:20px;font-size:11px;" onclick="toggleGraph()">✕</button>
       </div>
       <canvas id="graph-canvas"></canvas>
+    </div>
+
+    <!-- v3.4 — Memory panel (Knowledge_systems integration, demo)
+         Slides in from the right when 🧠 Memory button clicked. Currently shows
+         a placeholder; the full panel (Activity / Memory / Files / Graph tabs)
+         lives at ~/projects/Knowledge_systems/gmux_memory_integration/dummy_ui/
+         and is being merged in incrementally — see docs/03_INTEGRATION_GUIDE.md. -->
+    <div class="panel" id="memory-panel" style="border-right:none;">
+      <div class="ph" style="height:36px;padding:0 12px;">
+        <span style="font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--text);">🧠 MEMORY</span>
+        <span class="coming-soon-badge" style="margin-left:8px;">coming soon</span>
+        <span style="flex:1"></span>
+        <button class="ph-btn" style="width:22px;height:22px;font-size:12px;" onclick="toggleMemoryPanel()" title="Close (Esc)">✕</button>
+      </div>
+      <div class="mp-tabs-strip">
+        <button class="mp-tab active" data-tab="activity">Activity</button>
+        <button class="mp-tab" data-tab="memory">Memory</button>
+        <button class="mp-tab" data-tab="files">Files</button>
+        <button class="mp-tab" data-tab="graph">Graph</button>
+      </div>
+      <div class="mp-body" id="memory-panel-body">
+        <div class="mp-placeholder">
+          <div class="mp-placeholder-icon">🧠</div>
+          <div class="mp-placeholder-title">Agent memory monitor</div>
+          <p class="mp-placeholder-desc">
+            Track what each agent has read, written, and remembered across
+            sessions. Cross-reference memory between agents, see file hotspots,
+            and visualise the knowledge graph.
+          </p>
+          <div class="mp-placeholder-tabs">
+            <div class="mp-cs-row"><span>🔥</span><span><strong>Activity</strong> — live tool feed across all agents</span></div>
+            <div class="mp-cs-row"><span>📚</span><span><strong>Memory</strong> — recall + browse stored context</span></div>
+            <div class="mp-cs-row"><span>📁</span><span><strong>Files</strong> — heat-map of what's been touched</span></div>
+            <div class="mp-cs-row"><span>🕸</span><span><strong>Graph</strong> — agent ↔ memory relationships</span></div>
+          </div>
+          <a class="mp-placeholder-link" href="https://github.com/fivelidz/gmux-system/blob/main/docs/MEMORY_INTEGRATION.md" target="_blank" rel="noopener">
+            View integration roadmap →
+          </a>
+        </div>
+      </div>
     </div>
 
   </div><!-- /workspace -->
@@ -6795,6 +6911,34 @@ window.toggleGraph = function() {
   if (showGraph) renderGraph();
 };
 
+// v3.4 — Memory panel toggle (Knowledge_systems integration, demo state)
+let memoryPanelOpen = false;
+window.toggleMemoryPanel = function() {
+  memoryPanelOpen = !memoryPanelOpen;
+  $('memory-panel').classList.toggle('open', memoryPanelOpen);
+  toast(memoryPanelOpen ? '🧠 Memory panel (demo) — full version coming soon' : 'Memory panel closed');
+};
+
+// v3.4 — wire the placeholder tabs to swap which placeholder section is highlighted.
+// Even though the full panels aren't built yet, clicking the tabs gives the
+// user a feel for the eventual structure.
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('.mp-tab');
+  if (!t) return;
+  document.querySelectorAll('.mp-tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  // Highlight matching row in the placeholder card
+  const tabName = t.dataset.tab;
+  const rows = document.querySelectorAll('.mp-cs-row');
+  const idx = ['activity','memory','files','graph'].indexOf(tabName);
+  rows.forEach((r, i) => {
+    r.style.background = (i === idx) ? 'rgba(129,140,248,.10)' : '';
+    r.style.borderRadius = '4px';
+    r.style.padding = (i === idx) ? '4px 6px' : '0';
+    r.style.margin = (i === idx) ? '-3px -6px' : '0';
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // FOLDER GRAPH (simple canvas tree)
 // ═══════════════════════════════════════════════════════════
@@ -7062,16 +7206,73 @@ function presetCard(p, idOrName, isUser) {
   const delBtn = isUser
     ? `<button class="preset-del" onclick="deleteUserTheme('${idOrName.replace(/'/g,"\\'")}',event)" title="Delete">×</button>`
     : '';
+  // v3.4 — user-theme titles are click-to-rename:
+  //   - Single click on the swatch (or anywhere outside the title) applies theme
+  //   - Click on the .preset-name label of a USER theme → inline rename
+  //   - Built-in titles are just labels (can't rename)
+  const nameAttr = isUser
+    ? `class="preset-name editable" onclick="renameUserTheme('${idOrName.replace(/'/g,"\\'")}',event)" title="Click to rename"`
+    : `class="preset-name"`;
   return `<div class="preset${isActive?' active-preset':''}" onclick="applyPreset(${clickId})" title="${p.name}">
     <div class="preset-swatch">
       <span class="preset-dot" style="background:${p.vars['--bg']};border:${border}"></span>
       <span class="preset-dot" style="background:${p.vars['--accent']}"></span>
       <span class="preset-dot" style="background:${p.vars['--working']}"></span>
     </div>
-    <span class="preset-name">${star}${p.name}</span>
+    <span ${nameAttr}>${star}${p.name}</span>
     ${delBtn}
   </div>`;
 }
+
+// v3.4 — inline rename of a user-saved theme.
+// Replaces the label with an <input>, commits on Enter or blur, cancels on Esc.
+window.renameUserTheme = function(oldName, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const themes = loadUserThemes();
+  const idx = themes.findIndex(t => t.name === oldName);
+  if (idx < 0) return;
+
+  // Find the .preset-name span we clicked
+  const span = ev?.target?.closest('.preset-name');
+  if (!span) return;
+
+  // Replace with input
+  const input = document.createElement('input');
+  input.value = oldName;
+  input.maxLength = 32;
+  input.className = 'preset-rename-input';
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const commit = (save) => {
+    const newName = input.value.trim();
+    if (!save || !newName || newName === oldName) {
+      renderPresets();   // re-render to restore label
+      return;
+    }
+    // Check for name collision
+    if (themes.some((t,i) => i !== idx && t.name === newName)) {
+      toast(`⚠ Theme "${newName}" already exists`);
+      renderPresets();
+      return;
+    }
+    themes[idx].name = newName;
+    saveUserThemes(themes);
+    // Update activePreset key if we just renamed the current theme
+    if (activePreset === 'user:' + oldName) activePreset = 'user:' + newName;
+    renderPresets();
+    toast(`Renamed → "${newName}"`);
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+  });
+  input.addEventListener('blur', () => commit(true));
+  // Prevent the click from bubbling up to .preset onclick (applyPreset)
+  input.addEventListener('click', e => e.stopPropagation());
+};
 
 window.applyPreset = function(idOrName) {
   let preset = null;
