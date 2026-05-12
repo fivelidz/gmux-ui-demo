@@ -1061,6 +1061,62 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
   0%{transform:scale(1);opacity:.4;}
   100%{transform:scale(1.8);opacity:0;}
 }
+
+/* ── RESPONSIVENESS ───────────────────────────────────────────────────────
+   gmux is primarily a desktop app, but the browser version may run on
+   laptops/phones. These rules keep the UI usable across viewport sizes.
+*/
+
+/* Narrow desktop / large tablet (1024px and below) */
+@media (max-width: 1024px) {
+  #sidebar-panel { width: 200px !important; }
+  #chat-panel    { width: 380px !important; }
+  .ph-status     { font-size: 9px; padding: 1px 6px; }
+  .pf-tok        { display: none; }   /* hide token count, keep dot + port */
+}
+
+/* Tablet (768px and below) — chat panel slides over, sidebar narrower */
+@media (max-width: 768px) {
+  #sidebar-panel { width: 160px !important; }
+  /* chat panel becomes overlay instead of taking horizontal space */
+  #chat-panel.open {
+    position: fixed !important;
+    right: 0; top: 0; bottom: 0;
+    width: min(420px, 90vw) !important;
+    z-index: 100;
+    box-shadow: -8px 0 30px rgba(0,0,0,.5);
+  }
+  #pane-grid { grid-template-columns: 1fr !important; }
+  .topbar { font-size: 12px; gap: 6px; }
+  .topbar .kbd-hint { display: none; }
+}
+
+/* Phone (480px and below) — single column, sidebar collapses */
+@media (max-width: 480px) {
+  #sidebar-panel {
+    position: fixed !important; left: 0; top: 0; bottom: 0;
+    z-index: 90; transform: translateX(-100%);
+    transition: transform 200ms;
+    width: 240px !important;
+  }
+  #sidebar-panel.mobile-open { transform: translateX(0); }
+  .ph-title, .ph-status { font-size: 10px; }
+  .pane-foot { font-size: 9px; padding: 4px 6px; }
+  #cp-msgs { padding: 8px; }
+  .msg-body { font-size: 12px; }
+  #voice-strip { font-size: 11px; }
+  #topbar .tabstrip { overflow-x: auto; }
+}
+
+/* Ultrawide (2560px and above) — limit max width, centre */
+@media (min-width: 2560px) {
+  #app {
+    max-width: 2400px;
+    margin: 0 auto;
+    box-shadow: 0 0 60px rgba(0,0,0,0.4);
+  }
+  #pane-grid.g8 { grid-template-columns: repeat(4, 1fr) !important; }
+}
 </style>
 </head>
 <body>
@@ -1243,6 +1299,16 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
           <input type="range" min="1" max="5" value="3" style="flex:1;accent-color:var(--accent)" id="opts-sens" oninput="setSens(this.value)">
           <span>High</span>
         </div>
+      </div>
+
+      <div class="opts-section">
+        <div class="opts-st">Agent avatar</div>
+        <select class="opts-sel" id="opts-avatar" onchange="setAvatarMode(this.value)">
+          <option value="off">Off</option>
+          <option value="crab" selected>Crab (default)</option>
+          <option value="cat">ASCII cat</option>
+          <option value="dot">Coloured dot</option>
+        </select>
       </div>
 
     </div><!-- /layout -->
@@ -4314,12 +4380,26 @@ function updateAvatar(pane) {
   const state = pane.state || 'idle';
   const color = AVA_COLORS[state] || '#94a3b8';
   const label = AVA_LABELS[state] || state.toUpperCase();
+  const mode = localStorage.getItem('gmux.avatarMode') || 'crab';
+
+  // Render avatar based on mode
+  function avatarHtml(size) {
+    switch (mode) {
+      case 'off':  return '';
+      case 'cat':  return makeCatAscii(color, state, size);
+      case 'dot':  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 ${size/3}px ${color}88;display:flex;align-items:center;justify-content:center;font-size:${size/3}px;color:white;font-weight:700">${pane.window_index||''}</div>`;
+      case 'crab':
+      default:     return makeCrabSVG(color, size);
+    }
+  }
 
   // Chat panel mini avatar
   const craEl  = document.getElementById('cp-avatar-crab');
   const badgeEl = document.getElementById('cp-avatar-badge');
+  const wrapEl  = document.getElementById('cp-avatar');
+  if (wrapEl) wrapEl.style.display = (mode === 'off') ? 'none' : '';
   if (craEl) {
-    craEl.innerHTML = makeCrabSVG(color, 48);
+    craEl.innerHTML = avatarHtml(48);
     craEl.className = state;
     craEl.style.color = color;
   }
@@ -4335,13 +4415,37 @@ function updateAvatar(pane) {
   const fsCrab  = document.getElementById('fs-avatar-crab');
   const fsLabel = document.getElementById('fs-avatar-label');
   if (fsEl) {
-    const isFs = document.getElementById('app')?.classList.contains('chat-fullscreen') || 
+    const isFs = document.getElementById('app')?.classList.contains('chat-fullscreen') ||
                  (fullscreenId !== null);
-    fsEl.classList.toggle('visible', !!isFs);
-    if (fsCrab) { fsCrab.innerHTML = makeCrabSVG(color, 80); fsCrab.style.color = color; }
+    fsEl.classList.toggle('visible', !!isFs && mode !== 'off');
+    if (fsCrab) { fsCrab.innerHTML = avatarHtml(80); fsCrab.style.color = color; }
     if (fsLabel) fsLabel.textContent = `${pane.window_name} · ${label}`;
   }
 }
+
+// ASCII cat avatar — pixel-perfect cat face that changes based on state.
+// Inspired by the qalcode2 cats.
+function makeCatAscii(color, state, size=52) {
+  // Different cat poses per state
+  const cats = {
+    working:    ['  /\\_/\\  ', ' ( o.o ) ', '  > ^ <  '],
+    waiting:    ['  /\\_/\\  ', ' ( -.- ) ', '  ( = ) '],
+    permission: ['  /\\_/\\  ', ' ( @.@ ) ', '  > ! <  '],
+    done:       ['  /\\_/\\  ', ' ( ^.^ ) ', '  ( ~ )  '],
+    error:      ['  /\\_/\\  ', ' ( x.x ) ', '  > ~ <  '],
+    idle:       ['  /\\_/\\  ', ' ( =.= ) ', '  ~~~~~  '],
+  };
+  const lines = cats[state] || cats.idle;
+  const fontPx = Math.max(8, Math.floor(size / 4));
+  return `<pre style="margin:0;padding:0;color:${color};font-size:${fontPx}px;line-height:1.05;text-shadow:0 0 ${size/8}px ${color}88;font-family:monospace;text-align:center;">${lines.join('\n')}</pre>`;
+}
+
+window.setAvatarMode = function(mode) {
+  localStorage.setItem('gmux.avatarMode', mode);
+  toast(`Avatar: ${mode}`);
+  // Re-render current chat panel to apply
+  if (chatOpen && panes[selectedId]) updateAvatar(panes[selectedId]);
+};
 
 // ═══════════════════════════════════════════════════════════
 // PANE GRID
@@ -6649,6 +6753,9 @@ _loadPersistedState();
 // Apply persisted UI toggles
 if (tabsBottom) { const ts=$('tabstrip'); if(ts){ts.classList.add('bottom');ts.style.order='10';} }
 if (showGraph) { const gp=$('graph-panel'); if(gp)gp.classList.add('open'); }
+// Restore avatar mode on dropdown
+const _avatarSel = $('opts-avatar');
+if (_avatarSel) _avatarSel.value = localStorage.getItem('gmux.avatarMode') || 'crab';
 
 renderPresets();
 renderGestureMap();
