@@ -1494,6 +1494,11 @@ kbd{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
       </div>
     </div>
     <div class="sb" id="sb-src" style="color:var(--muted)">● mock</div>
+    <div class="sb" id="sb-backend" style="display:none;color:var(--waiting);cursor:pointer" title="Backend not reachable — click to restart">
+      <span id="sb-backend-icon">⚠</span>
+      <span id="sb-backend-text">backend down</span>
+      <button id="sb-backend-fix" style="margin-left:6px;padding:2px 8px;background:rgba(248,113,113,0.18);border:1px solid rgba(248,113,113,0.4);border-radius:4px;color:var(--waiting);font-size:10px;font-weight:600;cursor:pointer">restart</button>
+    </div>
   </div>
 </div>
 
@@ -6557,6 +6562,92 @@ setTimeout(()=>openChat(selectedId),80);
 
 // Try connecting to faster-whisper voice daemon (non-blocking, retry on fail)
 connectVoiceDaemon();
+
+// ─────────────────────────────────────────────────────────────────────
+// BACKEND HEALTH MONITOR — shows a warning + restart button when
+// monitor.py (:8769) is not reachable. Polls every 5 seconds.
+// In Tauri: uses backend_health command. In browser: pings :8769 directly.
+// ─────────────────────────────────────────────────────────────────────
+let _backendHealthState = { monitor: false, voice: false, lastCheck: 0 };
+
+async function _checkBackendHealth() {
+  let res;
+  if (window.__TAURI_INTERNALS__) {
+    try {
+      const { invoke } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core');
+      const json = await invoke('backend_health');
+      res = JSON.parse(json);
+    } catch(e) { res = null; }
+  }
+  if (!res) {
+    // Browser path: ping :8769 directly
+    try {
+      const r = await fetch('http://127.0.0.1:8769/health', { signal: AbortSignal.timeout(1200) });
+      res = { monitor: r.ok, voice: false, state_fresh: r.ok };
+    } catch { res = { monitor: false, voice: false, state_fresh: false }; }
+    // Also check voice port via WebSocket (browser can't ping arbitrary ports easily)
+    try {
+      const ws = new WebSocket('ws://127.0.0.1:8770');
+      await new Promise((resolve, reject) => {
+        ws.onopen = () => { res.voice = true; ws.close(); resolve(); };
+        ws.onerror = () => { res.voice = false; resolve(); };
+        setTimeout(() => { try { ws.close(); } catch(_){} resolve(); }, 800);
+      });
+    } catch {}
+  }
+  _backendHealthState = { ...res, lastCheck: Date.now() };
+  _renderBackendHealth();
+}
+
+function _renderBackendHealth() {
+  const box = $('sb-backend');
+  if (!box) return;
+  const { monitor, voice } = _backendHealthState;
+  if (monitor) {
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'inline-flex';
+  const txt = $('sb-backend-text');
+  if (txt) txt.textContent = voice
+    ? 'monitor down (voice OK)'
+    : 'backend down — UI on mock';
+}
+
+window._restartBackend = async function() {
+  const btn = $('sb-backend-fix');
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  toast('Restarting backend…');
+  if (window.__TAURI_INTERNALS__) {
+    try {
+      const { invoke } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2/core');
+      const json = await invoke('restart_backend');
+      const res = JSON.parse(json);
+      if (res.monitor) toast('✓ Backend restarted');
+      else             toast('✗ Backend restart failed — check /tmp/gmux-monitor.log');
+    } catch(e) {
+      toast('✗ Restart failed: ' + e);
+    }
+  } else {
+    toast('Browser mode — start manually: ./scripts/launch.sh');
+  }
+  if (btn) { btn.textContent = 'restart'; btn.disabled = false; }
+  await _checkBackendHealth();
+};
+
+// Wire the click handler (using event delegation since the button is rebuilt)
+document.addEventListener('click', (e) => {
+  if (e.target?.id === 'sb-backend-fix') {
+    e.preventDefault();
+    e.stopPropagation();
+    window._restartBackend();
+  }
+});
+
+// Initial check after a short delay (let initDataSource try first)
+setTimeout(_checkBackendHealth, 2500);
+// Re-check every 8 seconds
+setInterval(_checkBackendHealth, 8000);
 
 // Auto-save state whenever things change
 const _origSetGridMode = window.setGridMode;
