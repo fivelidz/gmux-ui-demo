@@ -4472,20 +4472,41 @@ function updatePaneEl(el, p) {
   el.className = `pane${isFS?' fullscreen':''}${isSel?' lit sel-pane':dimPanes?' dim':' lit'}${isVoiceTarget?' voice-target':''}`;
   el.draggable = true;
 
-  // Build todo items HTML
-  const todos = MOCK_TODOS[p.pane_id] || [];
-  const todoHtml = todos.length > 0 ? todos.map((t,i) => {
-    const isDone   = i < done;
-    const isActive = !isDone && i === done && p.state==='working';
+  // Build todo items HTML — prefer REAL todos from backend, fallback to mock
+  // Backend provides: [{id, content, status: "completed"|"pending"|"in-progress", priority}]
+  // Old mock provides: ["string", "string"]
+  let todoSource = [];
+  if (Array.isArray(p.todos) && p.todos.length > 0) {
+    todoSource = p.todos;  // real backend data
+  } else if (MOCK_TODOS[p.pane_id]) {
+    // fallback to mock only if we have no backend todos AND the mock has data for this pane
+    todoSource = MOCK_TODOS[p.pane_id].map((text, i) => ({
+      id: String(i), content: text,
+      status: i < done ? 'completed' : (i === done && p.state==='working' ? 'in-progress' : 'pending'),
+    }));
+  }
+  const todoHtml = todoSource.length > 0 ? todoSource.map((t) => {
+    const text   = (typeof t === 'string') ? t : (t.content || '');
+    const status = (typeof t === 'string') ? '' : (t.status || '');
+    const isDone   = status === 'completed';
+    const isActive = status === 'in-progress';
+    const cls    = isDone ? ' done' : isActive ? ' active' : '';
+    const icon   = isDone ? '✓' : isActive ? '⬛' : '';
     return `<div class="todo-item">
-      <div class="todo-check${isDone?' done':isActive?' active':''}">${isDone?'✓':isActive?'⬛':''}</div>
-      <span class="todo-text${isDone?' done':isActive?' active':''}">${t}</span>
+      <div class="todo-check${cls}">${icon}</div>
+      <span class="todo-text${cls}">${text}</span>
     </div>`;
   }).join('') : `<div style="color:var(--text-dim);font-size:13px;padding:10px 0">No tasks recorded</div>`;
 
-  // Build children HTML
-  const children = MOCK_CHILDREN[p.pane_id] || [];
-  const childrenHtml = children.length > 0 ? children.map(ch =>
+  // Build children HTML — prefer real children from backend
+  // Backend provides: [{name, ram_mb}]
+  let childrenSource = [];
+  if (Array.isArray(p.children) && p.children.length > 0) {
+    childrenSource = p.children.map(ch => ({ name: ch.name || '?', ram: ch.ram_mb || 0 }));
+  } else if (MOCK_CHILDREN[p.pane_id]) {
+    childrenSource = MOCK_CHILDREN[p.pane_id];
+  }
+  const childrenHtml = childrenSource.length > 0 ? childrenSource.map(ch =>
     `<div class="hw-child">
       <span class="hw-child-name">${ch.name}</span>
       <span class="hw-child-ram">${ch.ram} MB</span>
@@ -4807,16 +4828,76 @@ function updateChatHead() {
   st.textContent = STATE_LABEL[p.state];
 }
 
+// Real chat history cache — fetched from OpenCode API per pane
+// Key: pane_id → array of {role, text, streaming?}
+// Refreshed when chat opens for a pane, or every 10s while panel is open
+const REAL_CHAT = {};
+const _chatFetchTime = {};   // pane_id → timestamp of last fetch (rate-limit)
+
+async function _fetchRealChat(p) {
+  if (!p?.api_port || !p?.session_id || !p?.cwd) return null;
+  // Rate-limit per pane (don't refetch within 3s)
+  const last = _chatFetchTime[p.pane_id] || 0;
+  if (Date.now() - last < 3000) return REAL_CHAT[p.pane_id] || null;
+  _chatFetchTime[p.pane_id] = Date.now();
+
+  try {
+    const url = `http://127.0.0.1:${p.api_port}/session/${p.session_id}/message?directory=${encodeURIComponent(p.cwd)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(3500) });
+    if (!r.ok) return null;
+    const msgs = await r.json();
+    if (!Array.isArray(msgs)) return null;
+
+    // Convert OpenCode message format to UI chat format
+    const out = [];
+    for (const msg of msgs) {
+      const info = msg.info || {};
+      const role = info.role;
+      const parts = msg.parts || [];
+      // Concatenate text parts for this message
+      const textParts = parts.filter(p => p.type === 'text');
+      const toolParts = parts.filter(p => p.type === 'tool');
+
+      if (textParts.length > 0) {
+        const text = textParts.map(p => p.text || '').join('\n').trim();
+        if (text) {
+          out.push({ role: role === 'user' ? 'user' : 'agent', text });
+        }
+      }
+      // Show tool calls as "tool" role entries (collapsed)
+      for (const t of toolParts) {
+        const tname = t.tool || 'tool';
+        const ts = t.state || {};
+        const status = ts.status || '';
+        if (status === 'completed' || status === 'running') {
+          out.push({
+            role: 'tool',
+            text: `${tname}${status === 'running' ? ' (running)' : ''}: ${(ts.title || ts.input?.command || '').slice(0,80)}`,
+          });
+        }
+      }
+    }
+    REAL_CHAT[p.pane_id] = out;
+    return out;
+  } catch (e) {
+    return null;
+  }
+}
+
 function renderChatPanel(p) {
   if (!p) return;
   updateChatHead();
   const done=p.todo_done||0, tot=p.todo_total||0, pct=tot>0?Math.round(done/tot*100):0;
   const perm = p.state==='permission'||p.state==='sub_permission';
 
-  // Summary strip
+  // Summary strip — uses REAL data when backend provides it
+  const ramTxt = p.ram_mb ? fmtRam(p.ram_mb) : '—';
+  const cpuTxt = (p.cpu_pct !== undefined && p.cpu_pct !== null) ? `${Math.round(p.cpu_pct)}%` : '—';
+  const tokTxt = ((p.token_in||0)+(p.token_out||0)) > 0 ? fmtTokens((p.token_in||0)+(p.token_out||0)) : '—';
+  const modelTxt = p.model || '—';
   let sum = `<div class="cp-sr">
     <span class="cp-sm s-${p.state} arow-chip">${STATE_LABEL[p.state]}</span>
-    <span class="cp-sm">${fmtRam(p.ram_mb)} RAM · ${p.cpu_pct||0}% CPU · ${fmtTokens((p.token_in||0)+(p.token_out||0))} tok</span>
+    <span class="cp-sm" title="model · RAM · CPU · tokens">${modelTxt} · ${ramTxt} RAM · ${cpuTxt} CPU · ${tokTxt} tok</span>
   </div>`;
   if (tot>0) sum += `<div class="cp-pt"><div class="cp-pf" style="width:${pct}%;background:${p.state==='working'?'var(--working)':'var(--accent)'}"></div></div>`;
   if (perm)  sum += `<div class="cp-perm" style="margin-top:8px">
@@ -4825,8 +4906,11 @@ function renderChatPanel(p) {
   </div>`;
   $('cp-summary').innerHTML = sum;
 
-  // Messages
-  const hist = CHAT[p.pane_id] || [{role:'system',text:'No conversation history.'}];
+  // Messages — prefer REAL_CHAT (from backend) over mock CHAT
+  let hist = REAL_CHAT[p.pane_id];
+  if (!hist || hist.length === 0) {
+    hist = CHAT[p.pane_id] || [{role:'system', text:'No conversation history.'}];
+  }
   $('cp-msgs').innerHTML = hist.map(m => {
     const role  = m.role==='error'?'tool':m.role==='permission'?'tool':m.role;
     const extra = m.streaming?' streaming':'';
@@ -4837,10 +4921,21 @@ function renderChatPanel(p) {
     </div>`;
   }).join('');
   setTimeout(()=>{ $('cp-msgs').scrollTop=$('cp-msgs').scrollHeight; },50);
-  // Reset history navigation when switching agents + update button state
   _promptHistIdx = -1;
   _updateHistBtn(p.pane_id);
   updateAvatar(p);
+
+  // Kick off background fetch of real chat; re-render when it arrives
+  if (p.api_port && p.session_id) {
+    _fetchRealChat(p).then(real => {
+      if (real && real.length > 0) {
+        // Re-render only if this pane is still selected
+        if (selectedId === p.pane_id && chatOpen) {
+          renderChatPanel(p);
+        }
+      }
+    });
+  }
 }
 
 window.renderChatPanelById = function(id) { renderChatPanel(panes[id]); };
